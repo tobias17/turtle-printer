@@ -1,6 +1,64 @@
 import open3d as o3d
 import numpy as np
 from pathlib import Path
+from collections import deque
+
+def create_voxel_shell(voxels: np.ndarray) -> np.ndarray:
+    if not voxels.ndim == 3:
+        raise ValueError("Input must be a 3D numpy array.")
+    
+    shape = voxels.shape
+    # Create a visited array for flood fill (initialize all as False)
+    external_air = np.zeros(shape, dtype=bool)
+    
+    # Directions for 6-connectivity (x, y, z offsets)
+    directions = [
+        (1, 0, 0), (-1, 0, 0),
+        (0, 1, 0), (0, -1, 0),
+        (0, 0, 1), (0, 0, -1)
+    ]
+    
+    # Queue for BFS
+    queue = deque()
+    
+    # Enqueue all boundary air voxels as starting points for flood fill
+    for i in range(shape[0]):
+        for j in range(shape[1]):
+            for k in range(shape[2]):
+                if (i == 0 or i == shape[0]-1 or
+                    j == 0 or j == shape[1]-1 or
+                    k == 0 or k == shape[2]-1) and not voxels[i, j, k]:
+                    queue.append((i, j, k))
+                    external_air[i, j, k] = True
+    
+    # Flood fill to mark all external air
+    while queue:
+        x, y, z = queue.popleft()
+        for dx, dy, dz in directions:
+            nx, ny, nz = x + dx, y + dy, z + dz
+            if (0 <= nx < shape[0] and 0 <= ny < shape[1] and 0 <= nz < shape[2] and
+                not voxels[nx, ny, nz] and not external_air[nx, ny, nz]):
+                external_air[nx, ny, nz] = True
+                queue.append((nx, ny, nz))
+    
+    # Create the shell: keep solid voxels adjacent to external air
+    shell = np.zeros(shape, dtype=bool)
+    for i in range(shape[0]):
+        for j in range(shape[1]):
+            for k in range(shape[2]):
+                if voxels[i, j, k]:  # Original solid
+                    # Check if adjacent to any external air
+                    adjacent_to_external = False
+                    for dx, dy, dz in directions:
+                        nx, ny, nz = i + dx, j + dy, k + dz
+                        if (0 <= nx < shape[0] and 0 <= ny < shape[1] and 0 <= nz < shape[2] and
+                            external_air[nx, ny, nz]):
+                            adjacent_to_external = True
+                            break
+                    if adjacent_to_external:
+                        shell[i, j, k] = True
+    
+    return shell
 
 
 def main(
@@ -33,27 +91,14 @@ def main(
     shp = (maxs + 1 - mins).tolist()
     print(f"Shape: {shp}")
 
-    neighbors = np.array([
-        [1, 0, 0], [-1, 0, 0],
-        [0, 1, 0], [0, -1, 0],
-        [0, 0, 1], [0, 0, -1],
-    ])
-
     full_voxels = np.zeros(shp, dtype=np.bool)
     for voxel in voxels:
         gi = voxel.grid_index
         full_voxels[gi[0], gi[1], gi[2]] = np.True_
-    shell_voxels = np.zeros_like(full_voxels, np.bool)
-    for voxel in voxels:
-        gi = voxel.grid_index
-        if not any(gi[i] - 1 < 0 or gi[i] + 1 >= full_voxels.shape[i] for i in range(3)):
-            for n in range(6):
-                idx = gi + neighbors[n]
-                if not full_voxels[idx[0], idx[1], idx[2]]:
-                    break
-            else:
-                continue
-        shell_voxels[gi[0], gi[1], gi[2]] = np.True_
+
+    gapped_voxel = np.zeros([s + 2 for s in shp], dtype=np.bool)
+    gapped_voxel[1:-1,1:-1,1:-1] = full_voxels
+    shell_voxels = create_voxel_shell(gapped_voxel)[1:-1,1:-1,1:-1]
 
     np.save(mesh_path.parent / out_name, shell_voxels)
 
