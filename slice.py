@@ -61,10 +61,6 @@ def tsp_solver(points):
         visited[next_node] = True
         current = next_node
 
-    # 2-opt improvement
-    def tour_length(tour):
-        return sum(dist[tour[i], tour[i + 1]] for i in range(n))
-
     improvement = True
     while improvement:
         improvement = False
@@ -84,7 +80,7 @@ def tsp_solver(points):
 
 def plot_coords(points, shp_x, shp_y):
 
-    SCALE = 40
+    SCALE = 32
     img = np.zeros(((shp_x+1)*SCALE, (shp_y+1)*SCALE, 3))
 
     for i in range(len(points) - 1):
@@ -96,32 +92,68 @@ def plot_coords(points, shp_x, shp_y):
     cv2.imshow("img", img)
     cv2.waitKey()
 
+def get_chunk_indices(chunk_sizes, num_slices):
+    if not chunk_sizes or num_slices <= 0 or num_slices > len(chunk_sizes):
+        return []
+    
+    total_sum = sum(chunk_sizes)
+    target_size = total_sum / num_slices
+    result = [0]
+    current_sum = 0
+    current_slice = 1
+    
+    for i in range(len(chunk_sizes)):
+        current_sum += chunk_sizes[i]
+        
+        # If we've reached or exceeded the target size and haven't used all slices
+        if current_sum >= target_size * current_slice and current_slice < num_slices:
+            # Start the next slice at the next index
+            result.append(i + 1)
+            current_slice += 1
+    
+    # Ensure we have exactly num_slices indices
+    while len(result) < num_slices:
+        result.append(len(chunk_sizes))
+        
+    return result
 
-def main(shell_path:Path, out_name:str, debug:bool):
-    shell_voxels = np.load(shell_path)
-
+def slice_voxels(voxels:np.ndarray, x_offset:int, debug:bool, indent=" "*8):
     chunks = []
-    # for y in range(1):
-    for y in range(shell_voxels.shape[1]):
+    for y in range(voxels.shape[1]):
         coords = []
-        if not shell_voxels[:,y,:].any():
+        if not voxels[:,y,:].any():
             continue
-        for x in range(shell_voxels.shape[0]):
-            if not shell_voxels[x,y,:].any():
+        for x in range(voxels.shape[0]):
+            if not voxels[x,y,:].any():
                 continue
-            for z in range(shell_voxels.shape[2]):
-                if shell_voxels[x,y,z]:
-                    coords.append((x,z))
-                    # coords.append("{" + f"{x},{z}" + "}")
+            for z in range(voxels.shape[2]):
+                if voxels[x,y,z]:
+                    coords.append((x+x_offset,z))
         
         tsp_coords = tsp_solver(coords)
         if debug:
-            plot_coords(coords, shell_voxels.shape[0], shell_voxels.shape[2])
-            plot_coords(tsp_coords, shell_voxels.shape[0], shell_voxels.shape[2])
+            plot_coords(coords, voxels.shape[0], voxels.shape[2])
+            plot_coords(tsp_coords, voxels.shape[0], voxels.shape[2])
 
         str_coords = ["{" + f"{x},{z}" + "}" for x,z in tsp_coords]
-        chunks.append("    {" + ",".join(str_coords) + "}")
-    data = "data = {\n" + ",\n".join(chunks) + "\n}"
+        chunks.append(indent + "{" + ",".join(str_coords) + "}")
+    return ",\n".join(chunks)
+
+def main(shell_path:Path, out_name:str, turtles:int, debug:bool):
+    shell_voxels = np.load(shell_path)
+
+    shell_to_int = shell_voxels.astype(np.int32)
+    x_slice_sizes = [int(np.sum(shell_to_int[x,:,:])) for x in range(shell_to_int.shape[0])]
+    x_turtle_starts = get_chunk_indices(x_slice_sizes, num_slices=turtles)
+    x_turtle_starts.append(int(shell_to_int.shape[0]))
+    # assert False, x_turtle_starts
+
+    entries = []
+    for i in range(turtles):
+        entry = slice_voxels(shell_voxels[x_turtle_starts[i]:x_turtle_starts[i+1]], x_turtle_starts[i], debug)
+        entries.append("    {\n" + entry + "\n    }")
+
+    data = "local all_data = {\n" + ",\n".join(entries) + "\n}"
 
     save_path = shell_path.parent / out_name
     with open(save_path, "w") as f:
@@ -133,7 +165,8 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("shell_path", type=Path)
+    parser.add_argument("--turtles", type=int, default=8)
     parser.add_argument("--out-name", type=str, default="data.txt")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
-    main(args.shell_path, args.out_name, args.debug)
+    main(args.shell_path, args.out_name, args.turtles, args.debug)
