@@ -7,8 +7,8 @@ def tsp_solver(points):
     if not points:
         return []
     n = len(points)
-    if n < 2:
-        return points + [points[0]] if n > 0 else []
+    if n < 4:
+        return points
 
     # Convert points to numpy array and validate
     try:
@@ -78,16 +78,20 @@ def tsp_solver(points):
     result = [points[i].astype(int).tolist() for i in tour]
     return result
 
-def plot_coords(points, shp_x, shp_y):
+def plot_coords(points, shp_x, shp_y, x_offset, y_offset):
 
-    SCALE = 32
-    img = np.zeros(((shp_x+1)*SCALE, (shp_y+1)*SCALE, 3))
+    SCALE = 16
+    img = np.zeros(((shp_y+1)*SCALE, (shp_x+1)*SCALE, 3))
 
     for i in range(len(points) - 1):
-        y1, x1 = points[i]
-        y2, x2 = points[i + 1]
-        cv2.circle(img, (x1*SCALE+SCALE, y1*SCALE+SCALE), int(SCALE/2), (255,0,0), int(SCALE/8))
-        cv2.circle(img, (x2*SCALE+SCALE, y2*SCALE+SCALE), int(SCALE/2), (255,0,0), int(SCALE/8))
+        x1, y1 = points[i]
+        x2, y2 = points[i + 1]
+        x1 -= x_offset
+        x2 -= x_offset
+        y1 -= y_offset
+        y2 -= y_offset
+        cv2.circle(img, (x1*SCALE+SCALE, y1*SCALE+SCALE), int(SCALE/4), (255,0,0), int(SCALE/8))
+        cv2.circle(img, (x2*SCALE+SCALE, y2*SCALE+SCALE), int(SCALE/4), (255,0,0), int(SCALE/8))
         cv2.line(img, (x1*SCALE+SCALE, y1*SCALE+SCALE), (x2*SCALE+SCALE, y2*SCALE+SCALE), (0,0,255), int(SCALE/8))
     cv2.imshow("img", img)
     cv2.waitKey()
@@ -117,41 +121,55 @@ def get_chunk_indices(chunk_sizes, num_slices):
         
     return result
 
-def slice_voxels(voxels:np.ndarray, x_offset:int, debug:bool, indent=" "*8):
+def slice_voxels(voxels:np.ndarray, x_offset:int, debug:bool, z_offset:int=0, indent=" "*8):
     chunks = []
     for y in range(voxels.shape[1]):
         coords = []
-        if not voxels[:,y,:].any():
-            continue
-        for x in range(voxels.shape[0]):
-            if not voxels[x,y,:].any():
-                continue
-            for z in range(voxels.shape[2]):
-                if voxels[x,y,z]:
-                    coords.append((x+x_offset,z))
-        
+        if voxels[:,y,:].any():
+            for x in range(voxels.shape[0]):
+                if not voxels[x,y,:].any():
+                    continue
+                for z in range(voxels.shape[2]):
+                    if voxels[x,y,z]:
+                        coords.append((x+x_offset,z+z_offset))
+
         tsp_coords = tsp_solver(coords)
         if debug:
-            plot_coords(coords, voxels.shape[0], voxels.shape[2])
-            plot_coords(tsp_coords, voxels.shape[0], voxels.shape[2])
+            plot_coords(coords, voxels.shape[0], voxels.shape[2], x_offset, z_offset)
+            plot_coords(tsp_coords, voxels.shape[0], voxels.shape[2], x_offset, z_offset)
 
         str_coords = ["{" + f"{x},{z}" + "}" for x,z in tsp_coords]
         chunks.append(indent + "{" + ",".join(str_coords) + "}")
     return ",\n".join(chunks)
 
-def main(shell_path:Path, out_name:str, turtles:int, debug:bool):
+def main(shell_path:Path, out_name:str, turtles:int, depth:int, debug:bool):
     shell_voxels = np.load(shell_path)
+
+    assert depth >= 1, f"Depth must be a positive integer, got {depth}"
+    cols = turtles // depth
+    assert cols * depth == turtles, f"Turtle count ({turtles}) must be evenly divisible by depth ({depth})"
 
     shell_to_int = shell_voxels.astype(np.int32)
     x_slice_sizes = [int(np.sum(shell_to_int[x,:,:])) for x in range(shell_to_int.shape[0])]
-    x_turtle_starts = get_chunk_indices(x_slice_sizes, num_slices=turtles)
+    x_turtle_starts = get_chunk_indices(x_slice_sizes, num_slices=cols)
     x_turtle_starts.append(int(shell_to_int.shape[0]))
     # assert False, x_turtle_starts
 
     entries = []
-    for i in range(turtles):
-        entry = slice_voxels(shell_voxels[x_turtle_starts[i]:x_turtle_starts[i+1]], x_turtle_starts[i], debug)
-        entries.append("    {\n" + entry + "\n    }")
+    for i in range(cols):
+        chunk = shell_voxels[x_turtle_starts[i]:x_turtle_starts[i+1]]
+        x_offset = x_turtle_starts[i]
+        if depth == 1:
+            entry = slice_voxels(chunk, x_offset, debug)
+            entries.append("    {\n" + entry + "\n    }")
+        else:
+            chunk_as_int = chunk.astype(np.int32)
+            z_slice_sizes = [int(np.sum(chunk_as_int[:,:,z])) for z in range(chunk_as_int.shape[2])]
+            z_turtle_starts = get_chunk_indices(z_slice_sizes, num_slices=depth)
+            z_turtle_starts.append(int(chunk_as_int.shape[2]))
+            for j in range(depth):
+                entry = slice_voxels(chunk[:,:,z_turtle_starts[j]:z_turtle_starts[j+1]], x_offset, debug, z_offset=z_turtle_starts[j])
+                entries.append("    {\n" + entry + "\n    }")
 
     data = "local all_data = {\n" + ",\n".join(entries) + "\n}"
 
@@ -166,7 +184,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("shell_path", type=Path)
     parser.add_argument("--turtles", type=int, default=8)
+    parser.add_argument("--depth", type=int, default=2)
     parser.add_argument("--out-name", type=str, default="data.txt")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
-    main(args.shell_path, args.out_name, args.turtles, args.debug)
+    main(args.shell_path, args.out_name, args.turtles, args.depth, args.debug)

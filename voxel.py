@@ -61,6 +61,63 @@ def create_voxel_shell(voxels: np.ndarray) -> np.ndarray:
     return shell
 
 
+def create_textured_cube(center, size, texture_path):
+    cube = o3d.geometry.TriangleMesh.create_box(width=size, height=size, depth=size)
+    cube.translate(np.array(center) - np.array([size / 2, size / 2, size / 2]))
+    cube.compute_vertex_normals()
+    cube.triangle_uvs = o3d.utility.Vector2dVector([
+        [0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1],
+        [0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1],
+        [0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1],
+        [0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1],
+        [0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1],
+        [0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1],
+    ])
+    try:
+        texture_img = o3d.io.read_image(texture_path)
+        cube.textures = [texture_img]
+        cube.triangle_material_ids = o3d.utility.IntVector([0] * len(cube.triangles))
+    except Exception as e:
+        print(f"Error loading texture: {e}")
+        cube.paint_uniform_color([1.0, 0.5, 0.5])
+        return cube
+    return cube
+
+def visualize_shell(voxel_array, texture_path, flip_x, voxel_size=1.0):
+    voxel_positions = np.argwhere(voxel_array)
+    meshes = []
+    for pos in voxel_positions:
+        cube_center = pos * voxel_size
+        cube = create_textured_cube(cube_center, voxel_size, texture_path)
+        meshes.append(cube)
+    combined_mesh = o3d.geometry.TriangleMesh()
+    for mesh in meshes:
+        combined_mesh += mesh
+    coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=8.0, origin=[0, 0, 0])
+    transform = np.array([
+        [-1 if flip_x else 1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, -1, 0],
+        [0, 0, 0, 1]
+    ])
+    combined_mesh.transform(transform)
+    combined_mesh.compute_vertex_normals()
+    coord_frame.transform(transform)
+    coord_frame.compute_vertex_normals()
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(window_name="Textured Voxel Grid")
+    vis.add_geometry(combined_mesh)
+    vis.add_geometry(coord_frame)
+    render_option = vis.get_render_option()
+    render_option.mesh_show_back_face = True
+    render_option.background_color = np.array([44/255, 44/255, 46/255])
+    render_option.light_on = True
+    render_option.point_size = 1.0  # Minimize point artifacts
+    render_option.line_width = 0.0  # Disable line drawing
+    vis.run()
+    vis.destroy_window()
+
+
 def main(
     mesh_path:Path,
     # palette_path:Path,
@@ -68,8 +125,14 @@ def main(
     rotate_x:int,
     rotate_y:int,
     rotate_z:int,
+    flip_x:bool,
+    flip_y:bool,
+    flip_z:bool,
     voxel_scale:float,
     show:bool,
+    visualize:bool,
+    texture:Path|None,
+    reference:str,
 ):
     mesh = o3d.io.read_triangle_mesh(mesh_path)
 
@@ -80,6 +143,18 @@ def main(
         if amnt != 0:
             rotation_matrix = o3d.geometry.get_rotation_matrix_from_axis_angle([np.deg2rad(amnt) if i==j else 0 for j in range(3)])
             mesh.rotate(rotation_matrix, center=(0, 0, 0))
+    
+    if reference == "right":
+        flip_x = not flip_x
+    for i, flip in enumerate([flip_x, flip_y, flip_z]):
+        if flip:
+            transform = np.array([
+                [-1 if i==0 else 1, 0, 0, 0],
+                [0, -1 if i==1 else 1, 0, 0],
+                [0, 0, -1 if i==2 else 1, 0],
+                [0, 0, 0, 1]
+            ])
+            mesh.transform(transform)
 
     voxel_grid = o3d.geometry.VoxelGrid.create_from_triangle_mesh(mesh, voxel_size=1.0/voxel_scale)
     
@@ -104,6 +179,11 @@ def main(
 
     if show:
         o3d.visualization.draw_geometries([voxel_grid])
+    
+    if visualize:
+        assert texture is not None, f"Must pass in a texture path with --texture <path> if visualizing"
+        assert texture.exists(), f"Texture not found, searched for '{texture}'"
+        visualize_shell(shell_voxels, texture, reference=="right")
 
 
 if __name__ == "__main__":
@@ -115,8 +195,14 @@ if __name__ == "__main__":
     parser.add_argument("--rotate-x", type=int, default=0)
     parser.add_argument("--rotate-y", type=int, default=0)
     parser.add_argument("--rotate-z", type=int, default=0)
-    parser.add_argument("--voxel-scale", type=float, default=200)
+    parser.add_argument("--flip-x", action="store_true")
+    parser.add_argument("--flip-y", action="store_true")
+    parser.add_argument("--flip-z", action="store_true")
+    parser.add_argument("--voxel-scale", type=float, default=100)
     parser.add_argument("--show", action="store_true")
+    parser.add_argument("--visualize", action="store_true")
+    parser.add_argument("--texture", type=Path)
+    parser.add_argument("--reference", choices=["left", "right"], default="left")
     args = parser.parse_args()
     main(
         args.mesh_path,
@@ -125,6 +211,12 @@ if __name__ == "__main__":
         args.rotate_x,
         args.rotate_y,
         args.rotate_z,
+        args.flip_x,
+        args.flip_y,
+        args.flip_z,
         args.voxel_scale,
         args.show,
+        args.visualize,
+        args.texture,
+        args.reference,
     )
