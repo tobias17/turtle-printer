@@ -108,14 +108,14 @@ function get_items_from_ender_chest()
             await_confirmation("No chest in slot 16!")
         else
             -- Place chest below
-            if not turtle.placeDown() then
+            if not turtle.placeUp() then
                 await_confirmation("Failed to place chest!")
             else
                 -- Suck items from chest into slots 1-15
                 for i = 1, 15 do
                     turtle.select(i)
                     while true do
-                        if not turtle.suckDown() then
+                        if not turtle.suckUp() then
                             await_confirmation("No more items to suck!")
                         else
                             break
@@ -124,7 +124,7 @@ function get_items_from_ender_chest()
                 end
 
                 turtle.select(16)
-                turtle.digDown()
+                turtle.digUp()
                 curr_slot = 1
                 turtle.select(curr_slot)
                 done = true
