@@ -1,6 +1,5 @@
 import numpy as np
 from pathlib import Path
-import cv2
 
 def tsp_solver(points):
     # Handle empty or single-point cases
@@ -79,7 +78,7 @@ def tsp_solver(points):
     return result
 
 def plot_coords(points, shp_x, shp_y, x_offset, y_offset):
-
+    import cv2
     SCALE = 16
     img = np.zeros(((shp_y+1)*SCALE, (shp_x+1)*SCALE, 3))
 
@@ -121,7 +120,7 @@ def get_chunk_indices(chunk_sizes, num_slices):
         
     return result
 
-def slice_voxels(voxels:np.ndarray, x_offset:int, debug:bool, z_offset:int=0, indent=" "*8):
+def slice_voxels(voxels:np.ndarray, x_offset:int, debug:bool, z_offset:int=0, indent:str=" "*4):
     chunks = []
     for y in range(voxels.shape[1]):
         coords = []
@@ -143,6 +142,8 @@ def slice_voxels(voxels:np.ndarray, x_offset:int, debug:bool, z_offset:int=0, in
     return ",\n".join(chunks)
 
 def main(shell_path:Path, out_name:str, turtles:int, depth:int, debug:bool):
+    print(f"Slicing for {turtles} turtle{'' if turtles==1 else 's'}" + ("" if depth==1 else f", {depth=}"))
+
     shell_voxels = np.load(shell_path)
 
     assert depth >= 1, f"Depth must be a positive integer, got {depth}"
@@ -153,29 +154,41 @@ def main(shell_path:Path, out_name:str, turtles:int, depth:int, debug:bool):
     x_slice_sizes = [int(np.sum(shell_to_int[x,:,:])) for x in range(shell_to_int.shape[0])]
     x_turtle_starts = get_chunk_indices(x_slice_sizes, num_slices=cols)
     x_turtle_starts.append(int(shell_to_int.shape[0]))
-    # assert False, x_turtle_starts
 
     entries = []
+    indent = "" if turtles == 1 else " "*4
     for i in range(cols):
         chunk = shell_voxels[x_turtle_starts[i]:x_turtle_starts[i+1]]
         x_offset = x_turtle_starts[i]
         if depth == 1:
-            entry = slice_voxels(chunk, x_offset, debug)
-            entries.append("    {\n" + entry + "\n    }")
+            entry = slice_voxels(chunk, x_offset, debug, indent=indent+" "*4)
+            entries.append(indent + "{\n" + entry + "\n" + indent + "}")
         else:
             chunk_as_int = chunk.astype(np.int32)
             z_slice_sizes = [int(np.sum(chunk_as_int[:,:,z])) for z in range(chunk_as_int.shape[2])]
             z_turtle_starts = get_chunk_indices(z_slice_sizes, num_slices=depth)
             z_turtle_starts.append(int(chunk_as_int.shape[2]))
             for j in range(depth):
-                entry = slice_voxels(chunk[:,:,z_turtle_starts[j]:z_turtle_starts[j+1]], x_offset, debug, z_offset=z_turtle_starts[j])
-                entries.append("    {\n" + entry + "\n    }")
+                entry = slice_voxels(chunk[:,:,z_turtle_starts[j]:z_turtle_starts[j+1]], x_offset, debug, z_offset=z_turtle_starts[j], indent=indent+" "*4)
+                entries.append(indent + "{\n" + entry + "\n" + indent + "}")
 
-    data = "local all_data = {\n" + ",\n".join(entries) + "\n}"
+    if turtles == 1:
+        data = f"local data = {entries[0]}"
+    else:
+        data = "local all_data = {\n" + ",\n".join(entries) + "\n}\n\nlocal data = all_data[turtle_index]"
+
+    templates = Path("templates")
+    with open(templates / "mono_main.lua") as f:
+        prog = f.read()
+    with open(templates / "core_lib.lua") as f:
+        prog = prog.replace("--CORE-LIB--", f.read())
+    with open(templates / f"{'single' if turtles == 1 else 'multi'}_args.lua") as f:
+        prog = prog.replace("--ARGS--", f.read())
+    prog = prog.replace("--DATA--", data)
 
     save_path = shell_path.parent / out_name
     with open(save_path, "w") as f:
-        f.write(data)
+        f.write(prog)
     print(f"Saved data to {save_path}")
 
 
@@ -183,9 +196,9 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("shell_path", type=Path)
-    parser.add_argument("--turtles", type=int, default=8)
-    parser.add_argument("--depth", type=int, default=2)
-    parser.add_argument("--out-name", type=str, default="data.txt")
+    parser.add_argument("--turtles", type=int, default=1)
+    parser.add_argument("--depth", type=int, default=1)
+    parser.add_argument("--out-name", type=str, default="main.lua")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     main(args.shell_path, args.out_name, args.turtles, args.depth, args.debug)
