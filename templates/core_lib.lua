@@ -64,6 +64,21 @@ local function move_down()
     end
 end
 
+local function get_location()
+    while true do
+        for i = 1, 10 do
+            local x, y, z = gps.locate()
+            if not (x ~= x or y ~= y or z ~= z) then
+                -- this performs a nan check, only return if all the values are real
+                return x, y, z
+            end
+            print("Got (" .. x .. "," .. y .. "," .. z .. "), sleeping")
+            os.sleep(1)
+        end
+        await_confirmation("Failed to get position, make sure your GPS is properly set up.")
+    end
+end
+
 local function right_direction(dx, dz)
     if dir == dir_to_num["px"] then
         return dx == 1
@@ -73,6 +88,8 @@ local function right_direction(dx, dz)
         return dz == 1
     elseif dir == dir_to_num["nz"] then
         return dz == -1
+    else
+        error("dir=" .. dir .. ", expected value between 1 and 4 (inclusive)")
     end
 end
 
@@ -89,18 +106,19 @@ local function move_forward()
     if checked[dir] then
         __move_forward()
     else
-        local sx, _, sz = gps.locate()
+        local sx, _, sz = get_location()
         __move_forward()
-        local ex, _, ez = gps.locate()
+        local ex, _, ez = get_location()
         if not right_direction(ex - sx, ez - sz) then
             error("Turtle moved in the wrong direction! You either passed the wrong starting direction in or messed up your GPS configuration!")
         end
+        checked[dir] = true
     end
 end
 
 local function move_to(x, y, z)
     while true do
-        local cx, cy, cz = gps.locate()
+        local cx, cy, cz = get_location()
         local dx = x - cx
         local dy = y - cy
         local dz = z - cz
@@ -108,7 +126,6 @@ local function move_to(x, y, z)
             return
         end
 
-        print(dx .. ", " .. dy .. ", " .. dz)
         if dy > 0 then
             for _ = 1, dy do
                 move_up()

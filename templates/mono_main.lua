@@ -5,7 +5,7 @@
 local curr_slot = 1
 turtle.select(curr_slot)
 
-function get_items_from_ender_chest()
+local function get_items_from_ender_chest()
     local done = false
     while not done do
         -- Check if chest is in slot 16
@@ -39,7 +39,7 @@ function get_items_from_ender_chest()
     end
 end
 
-function ensure_items_exist()
+local function ensure_items_exist()
     if turtle.getItemCount(curr_slot) > 0 then
         return
     end
@@ -53,7 +53,7 @@ function ensure_items_exist()
             end
         end
 
-        print("No items found, retrieving from chest")
+        print("No items found, retrieving from ender chest.")
         get_items_from_ender_chest()
     end
 end
@@ -73,3 +73,4 @@ for y = 1, #data do
         end
     end
 end
+print("All done!")
