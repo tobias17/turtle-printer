@@ -1,5 +1,4 @@
--- local dir_to_num = { pz = 1, px = 2, nz = 3, nx = 4 }
-local dir_to_num = { pz = 1, nx = 2, nz = 3, px = 4 }
+local dir_to_num = { pz = 1, px = 2, nz = 3, nx = 4 }
 local dir = dir_to_num[start_dir]
 
 local function await_confirmation(message)
