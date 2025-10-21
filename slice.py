@@ -141,7 +141,14 @@ def slice_voxels(voxels:np.ndarray, x_offset:int, debug:bool, z_offset:int=0, in
         chunks.append(indent + "{" + ",".join(str_coords) + "}")
     return ",\n".join(chunks)
 
-def main(shell_path:Path, out_name:str, turtles:int, depth:int, debug:bool):
+def main(
+    shell_path:Path,
+    turtles:int,
+    depth:int,
+    out_name:str,
+    out_dir:Path|None,
+    debug:bool,
+):
     print(f"Slicing for {turtles} turtle{'' if turtles==1 else 's'}" + ("" if depth==1 else f", {depth=}"))
 
     shell_voxels = np.load(shell_path)
@@ -186,7 +193,10 @@ def main(shell_path:Path, out_name:str, turtles:int, depth:int, debug:bool):
         prog = prog.replace("--ARGS--", f.read())
     prog = prog.replace("--DATA--", data)
 
-    save_path = shell_path.parent / out_name
+    if out_dir is None:
+        out_dir = shell_path.parent
+    assert out_dir.is_dir(), f"Failed to find directory at '{out_dir}'"
+    save_path = out_dir / out_name
     with open(save_path, "w") as f:
         f.write(prog)
     print(f"Saved data to {save_path}")
@@ -199,6 +209,7 @@ if __name__ == "__main__":
     parser.add_argument("--turtles", type=int, default=1)
     parser.add_argument("--depth", type=int, default=1)
     parser.add_argument("--out-name", type=str, default="main.lua")
+    parser.add_argument("--out-dir", type=Path)
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
-    main(args.shell_path, args.out_name, args.turtles, args.depth, args.debug)
+    main(args.shell_path, args.turtles, args.depth, args.out_name, args.out_dir, args.debug)
