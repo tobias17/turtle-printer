@@ -1,6 +1,7 @@
 numpy
 scipy
 matplotlib
+Pillow
 
 # voxel.py (mesh -> voxel shell)
 open3d

@@ -243,11 +243,75 @@ def _ids_to_colors(best_id, atlas, palette, default_color=(0.6, 0.6, 0.6)):
     return colors
 
 
-def _render_one_view(filled, colors, factor, view, title, out_path):
-    import matplotlib.pyplot as plt
+BG_COLOR = "#bfe3ff"
 
-    fig = plt.figure(figsize=(13, 15))
-    ax = fig.add_subplot(111, projection="3d")
+
+def _autocrop(rgb, bg_color=BG_COLOR, pad=20, tol=6):
+    """Crops away the (uniformly-colored) background margin matplotlib's 3D
+    axes always reserve around the actual voxel silhouette -- Axes3D
+    reserves a roughly cubic viewport sized for any viewing angle, so a
+    near-edge-on view (low elevation, a flat/wide structure, ...) leaves
+    huge unused bands above/below the content that plain tight_layout
+    can't remove."""
+    from matplotlib.colors import to_rgb
+
+    bg = np.array([round(c * 255) for c in to_rgb(bg_color)], dtype=np.int16)
+    diff = np.abs(rgb.astype(np.int16) - bg).sum(axis=-1)
+    mask = diff > tol
+    rows = np.where(mask.any(axis=1))[0]
+    cols = np.where(mask.any(axis=0))[0]
+    if len(rows) == 0 or len(cols) == 0:
+        return rgb
+    r0, r1 = max(0, rows.min() - pad), min(rgb.shape[0], rows.max() + 1 + pad)
+    c0, c1 = max(0, cols.min() - pad), min(rgb.shape[1], cols.max() + 1 + pad)
+    return rgb[r0:r1, c0:c1]
+
+
+def _add_title_bar(img, title, bg_color=BG_COLOR, text_color="#1a1a1a", font_size=28, pad=14):
+    """Composites a title caption above `img` as a flat color bar sized to
+    fit -- drawn with PIL rather than matplotlib's own title, since a
+    matplotlib title reserves layout space at figure-render time (before
+    the content's actual on-screen size is known) and re-introduces the
+    same wasted-space problem _autocrop fixes."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    font = None
+    for candidate in ("arial.ttf", "DejaVuSans.ttf"):
+        try:
+            font = ImageFont.truetype(candidate, font_size)
+            break
+        except OSError:
+            continue
+    if font is None:
+        font = ImageFont.load_default(size=font_size)
+
+    width, height = img.size
+    bar_height = font_size + pad * 2
+    bar = Image.new("RGB", (width, bar_height), bg_color)
+    draw = ImageDraw.Draw(bar)
+    bbox = draw.textbbox((0, 0), title, font=font)
+    text_w = bbox[2] - bbox[0]
+    draw.text(((width - text_w) / 2, pad), title, fill=text_color, font=font)
+
+    combined = Image.new("RGB", (width, height + bar_height), bg_color)
+    combined.paste(bar, (0, 0))
+    combined.paste(img, (0, bar_height))
+    return combined
+
+
+def _render_one_view(filled, colors, factor, view, title, out_path):
+    import io
+
+    import matplotlib.pyplot as plt
+    from PIL import Image
+
+    fig = plt.figure(figsize=(12, 12))
+    fig.patch.set_facecolor(BG_COLOR)
+    ax = fig.add_axes([0, 0, 1, 1], projection="3d")
+    ax.set_facecolor(BG_COLOR)
+    for pane in (ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane):
+        pane.set_facecolor(BG_COLOR)
+        pane.set_edgecolor(BG_COLOR)
     ax.voxels(filled, facecolors=colors, edgecolor=None, shade=True)
     ax.set_box_aspect(filled.shape)
     ax.set_axis_off()
@@ -273,12 +337,15 @@ def _render_one_view(filled, colors, factor, view, title, out_path):
                     fontsize=9, ha="right", va="center")
         view_title = f"{title + ' - ' if title else ''}actual height: {real_h} blocks"
 
-    if view_title:
-        ax.set_title(view_title, fontsize=13)
-
-    plt.tight_layout(pad=0)
-    fig.savefig(out_path, dpi=170, facecolor="#bfe3ff")
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=170, facecolor=BG_COLOR)
     plt.close(fig)
+    buf.seek(0)
+    cropped = _autocrop(np.array(Image.open(buf).convert("RGB")))
+    img = Image.fromarray(cropped)
+    if view_title:
+        img = _add_title_bar(img, view_title)
+    img.save(out_path)
     print(f"Saved render to {out_path}")
 
 
@@ -297,7 +364,13 @@ def render_screenshot(structure, out_path, title=None, palette=None, target_max_
                 When explicitly given, returns a list of paths (one per
                 view) instead of a single path.
     """
-    filled, best_id, factor = _downsample(structure.data, structure.atlas, target_max_dim)
+    # Structure.data is (X, Y, Z) with Y (axis 1) vertical, per the Atlas/
+    # Structure contract -- but matplotlib's ax.voxels() always treats an
+    # array's 3rd axis as the vertical one. Swap Y/Z once here so every
+    # caller gets a correctly-oriented render regardless of which axis their
+    # generator happens to consider "up" internally.
+    display_data = np.swapaxes(structure.data, 1, 2)
+    filled, best_id, factor = _downsample(display_data, structure.atlas, target_max_dim)
     colors = _ids_to_colors(best_id, structure.atlas, palette or {})
 
     out_path = Path(out_path)

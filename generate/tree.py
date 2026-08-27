@@ -379,7 +379,11 @@ def grid_to_structure(grid):
     for internal_id in sorted(BLOCK_NAMES):
         idx = atlas.add(BLOCK_NAMES[internal_id])
         assert idx == internal_id, "BLOCK_NAMES ids must register in atlas in the same order as the grid's own ids"
-    return Structure.from_data(grid, atlas)
+    # This module's own grid is (X, Y, Z) with Z (axis 2) vertical, but the
+    # Structure/Atlas contract is Y (axis 1) vertical -- swap here, once, at
+    # the boundary, so everything downstream (render_screenshot, .npz, the
+    # future printer pipeline) can rely on one consistent convention.
+    return Structure.from_data(grid.transpose(0, 2, 1), atlas)
 
 
 def preview(structure, out_dir, out_name, title=None):
