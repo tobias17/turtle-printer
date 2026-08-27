@@ -86,11 +86,22 @@ maturity:
   a visibly wrong structure (sideways, missing a trunk, etc.). When you
   change generation or rendering code, actually run it and look at the
   output PNG before calling it done.
-- **Don't run ad hoc `python -c "..."` one-liners directly.** Write a small
-  script to a file (put throwaway/diagnostic scripts in `generate/out/`,
-  which is gitignored) and run it with the venv's Python directly, e.g.
-  `.venv/Scripts/python.exe generate/out/test.py`, rather than
-  `source .venv/Scripts/activate && python -c ...`.
+- **Don't run ad hoc `python -c "..."` one-liners directly.** Write the
+  script to `generate/out/tmp.py` instead (gitignored scratch space) and run
+  it by invoking the venv's Python **directly** on that one file:
+  `c:\Users\tobia\Documents\repos\turtle-printer\.venv\Scripts\python.exe c:\Users\tobia\Documents\repos\turtle-printer\generate\out\tmp.py`
+  - Reuse that same `generate/out/tmp.py` path for every throwaway/diagnostic
+    script in a session — overwrite it each time rather than inventing new
+    filenames (`test.py`, `hires_test.py`, ...). One well-known scratch file
+    is easy for the user to glance at and approve; a new name each time is
+    not.
+  - Run it as a single, plain command: no `cd ... &&`, no `source
+    .venv/Scripts/activate &&`, no chaining with other commands. Use the
+    absolute path to `python.exe` and the absolute path to `tmp.py` so `cd`
+    is never needed.
+  - This applies to every one-off numeric/rendering check, not just the
+    obvious ones — regenerating a structure to compare render settings,
+    checking array stats, timing a function, etc.
 - **Keep shell commands simple and atomic**, especially anything touching
   git — don't chain unrelated operations (cleanup + add + status, etc.)
   into one command. Let the user drive git themselves unless they
