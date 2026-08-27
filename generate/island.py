@@ -6,21 +6,21 @@ Procedurally generates floating rock islands (irregular grassy top,
 tapering rocky underside, hanging "root" stalactites, moss/vine
 decoration) in the style of concept-art floating islands.
 
-Outputs:
-  1. A .npz model file in the project's canonical format: a 3D numpy
-     array of int16 block indices (X, Y, Z with Y up, 0 = air) plus a
-     JSON atlas legend naming each index - the same format as
-     islands_old/generate.py.
+Outputs (into --out-dir, default generate/out):
+  1. A .npz Structure (block-index array + Atlas legend) in the same
+     canonical format used by tree.py - see generate/utils.py.
   2. A 3D preview image rendered as full shaded blocks so you can check
      the shape BEFORE building anything in-game.
+  3. Optionally (--schem) a WorldEdit schematic, to see it live in a
+     creative-mode save.
 
 No external world/game connection is needed to preview - this is pure
 geometry + a plotting library.
 
 Usage:
-    python floating_islands.py --diameter 40           # single island, flat 40-block-wide top
-    python floating_islands.py --diameter 40 --seed 7  # different random variation, same size
-    python floating_islands.py --scene                 # old multi-island demo composition
+    python island.py --diameter 40           # single island, flat 40-block-wide top
+    python island.py --diameter 40 --seed 7  # different random variation, same size
+    python island.py --scene                 # old multi-island demo composition
 
 By default the island has a perfectly FLAT top (single Y level) so it's
 easy to build on, but the outline is irregular (not a perfect circle) and
@@ -30,42 +30,11 @@ the underside tapers down into rock with hanging root/stalactite drips.
 import argparse
 import math
 import random
-import sys
 from pathlib import Path
 
 import numpy as np
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from utils import Atlas, Structure, render_screenshot  # noqa: E402
-
-
-# ---------------------------------------------------------------------------
-# Noise helpers
-# ---------------------------------------------------------------------------
-
-def value_noise_2d(res, grid_size, seed):
-    """Smooth 2D value noise on an res x res grid, roughly in [-1, 1].
-    Pure numpy (no external noise library needed)."""
-    rng = np.random.default_rng(seed)
-    coarse = rng.uniform(-1, 1, (grid_size + 1, grid_size + 1))
-
-    coords = np.linspace(0, grid_size - 1e-9, res)
-    xi = np.floor(coords).astype(int)
-    xf = coords - xi
-
-    def smoothstep(t):
-        return t * t * (3 - 2 * t)
-
-    X, Y = np.meshgrid(xi, xi, indexing="ij")
-    XF, YF = np.meshgrid(xf, xf, indexing="ij")
-    sx, sy = smoothstep(XF), smoothstep(YF)
-
-    top = coarse[X, Y] * (1 - sx) + coarse[X + 1, Y] * sx
-    bot = coarse[X, Y + 1] * (1 - sx) + coarse[X + 1, Y + 1] * sx
-    return top * (1 - sy) + bot * sy
+from utils import Atlas, Structure, render_screenshot, value_noise_2d
 
 
 # ---------------------------------------------------------------------------
@@ -447,9 +416,11 @@ def main():
     ap.add_argument("--out", type=str, default="island", help="output file prefix")
     ap.add_argument("--out-dir", type=Path, default=Path(__file__).parent / "out",
                      dest="out_dir",
-                     help="directory for outputs (default: islands/out)")
+                     help="directory for outputs (default: generate/out)")
     ap.add_argument("--scene", action="store_true",
                      help="generate the old multi-island demo scene instead of a single island")
+    ap.add_argument("--schem", action="store_true",
+                     help="also export a .schem for WorldEdit (requires mcschematic)")
     args = ap.parse_args()
 
     if args.scene:
@@ -476,6 +447,9 @@ def main():
              else f"floating island (d={args.diameter}, seed={args.seed})")
     png_path = preview(structure, out_path=args.out_dir / f"{args.out}.png", title=title)
     print(f"Saved preview image to {png_path}")
+
+    if args.schem:
+        structure.to_schematic(args.out_dir, args.out)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,12 @@
+numpy
+scipy
+matplotlib
+
+# voxel.py (mesh -> voxel shell)
+open3d
+
+# slice.py --debug (coordinate plotting)
+opencv-python
+
+# generate/*.py: optional .schem export for loading into a game save
+mcschematic
