@@ -39,11 +39,37 @@ maturity:
     point you build the `Structure` — see `tree.py`'s `grid_to_structure`
     for the pattern. Don't let that transpose leak into the generator's
     internal math; keep it a one-line boundary conversion.
-  - `render_screenshot()` in `utils.py` already accounts for the Y-up
-    convention (it swaps axes internally for matplotlib, which expects the
-    3rd array axis to be vertical). If a preview ever looks rotated/sideways
-    after adding a new generator, check that generator's axis convention
-    first before touching the renderer.
+  - `render_screenshot()` in `utils.py` uses axis 1 as vertical directly
+    (no internal axis swap) — it renders via Open3D, not matplotlib, so
+    there's no "3rd axis must be vertical" constraint to work around. If a
+    preview ever looks rotated/sideways after adding a new generator, check
+    that generator's own axis convention first before touching the
+    renderer.
+- **`render_screenshot()` renders every exposed block face at full voxel
+  resolution** — flat per-face color (matching Minecraft's fixed per-face
+  ambient shading: top brightest, bottom darkest), no texture, no lighting
+  model, no downsampling. It builds a triangle mesh from only the
+  air-adjacent faces (fully vectorized numpy, no per-voxel Python loop —
+  see `_build_exposed_face_mesh`) and renders it offscreen with Open3D's
+  legacy `Visualizer` (`visible=False`). Faces between two solid blocks are
+  omitted because they're provably invisible from any outside camera angle,
+  not because of a resolution shortcut — the render is meant to show
+  exactly what the structure would look like assembled in Minecraft, minus
+  block textures.
+  - Open3D's newer offscreen renderer
+    (`o3d.visualization.rendering.OffscreenRenderer`) does **not** work in
+    this environment — it requires an EGL headless context, which errors
+    with "EGL Headless is not supported on this platform" on Windows. Use
+    the legacy `o3d.visualization.Visualizer` (`create_window(visible=False)`
+    + `capture_screen_image`) instead; that one works headless here via a
+    real (hidden) native GL context. Don't "fix" this by switching back to
+    the newer API.
+  - The camera is a hand-built pinhole (see `_make_camera`), not Open3D's
+    `set_front`/`set_lookat` convenience API — this gives exact,
+    recoverable pixel↔world math (`_project_points`), which the height
+    ruler depends on to place its ticks precisely. If you change the camera
+    setup, keep it as an explicit intrinsic/extrinsic construction, not a
+    heuristic auto-fit, or the ruler will drift out of alignment.
 - **Three intended outputs per generator**, in order of current priority:
   1. PNG preview via `render_screenshot()` — the only one actively used
      right now, for fast iteration on shape/look.
@@ -56,17 +82,24 @@ maturity:
 - **Preview before hollowing.** If a generator hollows out buried interior
   voxels for efficiency (see `tree.py`'s `hollow_out`), render the preview
   from the *unhollowed* grid first, then hollow before saving/exporting.
-  Downsampling a hollowed thin shell for preview can drop it below the
-  fill threshold and make solid structures (e.g. a tree trunk) disappear
-  from the render entirely — this is a real bug that happened once already,
-  not a hypothetical.
-- matplotlib's 3D `voxels()` reserves a viewport sized for the object's full
-  bounding box regardless of the current view angle, which leaves large
-  blank margins at low elevation angles or for flat/wide structures.
-  `utils.py`'s renderer works around this with `_autocrop` (crop the
-  rendered PNG to actual content) plus a PIL-composited title bar rather
-  than matplotlib's own title. Don't reintroduce `ax.set_title()` /
-  `plt.tight_layout()` as the layout mechanism — it doesn't solve this.
+  This traces back to a real bug with the old matplotlib-based renderer,
+  which downsampled and could drop a hollowed thin shell below its fill
+  threshold, making solid structures (e.g. a tree trunk) disappear from the
+  render entirely. The current Open3D-based renderer doesn't downsample at
+  all, so that specific failure mode is gone — `hollow_out` only ever
+  removes voxels with zero exposed faces, so rendering before or after
+  hollowing is now visually identical either way. Keep rendering before
+  hollowing anyway (it's the simpler pipeline order and costs nothing extra
+  — see `render_screenshot`'s docstring), but don't assume this ordering is
+  still load-bearing for correctness if you're touching this code.
+- A fixed camera framing (see `_make_camera`'s `margin`) always leaves some
+  blank space around the structure, and that space isn't uniform across
+  view angles (a flat/wide structure viewed edge-on leaves huge blank bands
+  above/below it). `utils.py`'s renderer crops this with `_autocrop` (trim
+  the rendered PNG to actual content) plus a PIL-composited title bar,
+  rather than trying to frame each view exactly. Don't reintroduce
+  per-view manual framing as the fix for this — cropping after the fact is
+  simpler and handles every view angle uniformly.
 
 ## Environment
 

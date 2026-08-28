@@ -1,9 +1,9 @@
 numpy
-scipy
 matplotlib
 Pillow
 
-# voxel.py (mesh -> voxel shell)
+# voxel.py (mesh -> voxel shell); also generate/utils.py's exact-block
+# preview renderer (offscreen exposed-face mesh rendering)
 open3d
 
 # slice.py --debug (coordinate plotting)

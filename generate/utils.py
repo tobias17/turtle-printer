@@ -199,60 +199,160 @@ def spherical_bump_noise(theta, phi, seed, n=4, amp=1.0):
 # Preview rendering
 # ---------------------------------------------------------------------------
 
-def _downsample(data, atlas, target_max_dim):
-    """Anti-aliased downsample for preview rendering: box-filter (average)
-    occupancy and per-block-type fraction BEFORE subsampling, so fine
-    surface texture is band-limited into a coherent lower-res shape instead
-    of aliasing into a noisy checkerboard. Naive point-sampling looks wrong
-    AND renders far slower, since the aliased checkerboard defeats
-    matplotlib's hidden-face culling."""
-    factor = max(1, max(data.shape) // target_max_dim)
-    if factor == 1:
-        filled = data != 0
-        return filled, data, factor
-
-    from scipy.ndimage import uniform_filter
-
-    occ = (data != 0).astype(np.float32)
-    occ_smooth = uniform_filter(occ, size=factor, mode="constant")
-    sub = tuple(slice(factor // 2, None, factor) for _ in range(3))
-    filled = occ_smooth[sub] > 0.5
-
-    best_id = np.zeros(filled.shape, dtype=data.dtype)
-    best_frac = np.zeros(filled.shape, dtype=np.float32)
-    for block_id in range(1, len(atlas)):
-        frac = uniform_filter((data == block_id).astype(np.float32), size=factor, mode="constant")[sub]
-        better = frac > best_frac
-        best_frac = np.where(better, frac, best_frac)
-        best_id = np.where(better, block_id, best_id)
-    best_id = np.where(filled, best_id, 0)
-    return filled, best_id, factor
+# Per-face-direction brightness multipliers, matching Minecraft's own fixed
+# ambient shading per cube face (top brightest, bottom darkest, the two
+# horizontal axis pairs in between) -- this is what gives the render a sense
+# of form using flat color alone, with no lighting model or texture involved.
+_FACE_SHADE = {0: (0.8, 0.6), 1: (1.0, 0.5), 2: (0.8, 0.6)}  # axis -> (+dir, -dir)
 
 
-def _ids_to_colors(best_id, atlas, palette, default_color=(0.6, 0.6, 0.6)):
-    from matplotlib.colors import to_hex
+def _build_exposed_face_mesh(data, atlas, palette, default_color=(0.6, 0.6, 0.6)):
+    """Builds a triangle mesh with one quad per exposed block face -- every
+    face of every block that borders air, at full voxel resolution, no
+    downsampling or approximation of any kind. Faces between two solid
+    blocks are omitted because they are provably invisible from any
+    exterior camera angle (the definition of `hollow_out`'s "buried"
+    voxels), not because of any resolution shortcut -- so this produces
+    exactly what the structure would look like assembled in Minecraft,
+    just without block textures (flat per-face color only).
 
-    colors = np.empty(best_id.shape, dtype=object)
+    Entirely vectorized: each of the 6 face directions is one array-wide
+    boolean comparison (a voxel's face is exposed if its neighbor in that
+    direction is air or out of bounds) plus a batch of numpy index math to
+    place that direction's quads -- no per-voxel Python loop, so this stays
+    fast even at tens of millions of exposed faces.
+    """
+    import open3d as o3d
+    from matplotlib.colors import to_rgb
+
+    id_to_rgb = np.zeros((len(atlas), 3), dtype=np.float64)
     for idx in range(1, len(atlas)):
-        # to_hex() normalizes both hex strings and RGB(A) tuples to a plain
-        # hex string, which numpy always treats as a scalar object -- an
-        # RGB tuple assigned directly gets broadcast elementwise across the
-        # masked positions instead of being stored as one object per voxel.
-        color = to_hex(palette.get(atlas.name(idx), default_color))
-        colors[best_id == idx] = color
-    return colors
+        id_to_rgb[idx] = to_rgb(palette.get(atlas.name(idx), default_color))
+
+    solid = data != 0
+    corners = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float64)
+    tri_local = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64)
+
+    # Winding order for a quad spanning axes (a0, a1) at fixed `axis` faces
+    # +axis_hat (via the right-hand rule) only when (a0, a1, axis) is a
+    # *cyclic* permutation of (0, 1, 2) -- true for axis 0 ((1,2,0)) and
+    # axis 2 ((0,1,2)), but axis 1's (a0, a1) = (0, 2) makes (0, 2, 1) an
+    # *odd* permutation, so its natural winding faces -axis_hat instead.
+    # Open3D culls backfaces by default, so getting this wrong silently
+    # drops exactly the top/bottom faces -- which is what "only parts of
+    # the face rendered" turned out to be.
+    axis_parity = {0: 1, 1: -1, 2: 1}
+
+    all_verts, all_tris, all_colors = [], [], []
+    vert_offset = 0
+    for axis in range(3):
+        a0, a1 = [a for a in range(3) if a != axis]
+        for direction in (1, -1):
+            # neighbor[i] must hold solid[i + direction] (the block on the
+            # `direction` side of voxel i), so exposed = solid & ~neighbor
+            # finds voxels whose `direction`-side neighbor is air. Getting
+            # src/dst backwards here (an earlier version of this code did)
+            # doesn't just mislabel which set is which -- combined with the
+            # `base[axis] += 1` below, it places direction=1's faces one
+            # step short (at the *hidden* boundary between two solid
+            # voxels) and direction=-1's faces one step short the other
+            # way, leaving the real exposed boundary bare on both sides.
+            # That reads as literal holes in the surface.
+            neighbor = np.zeros_like(solid)
+            src, dst = [slice(None)] * 3, [slice(None)] * 3
+            if direction == 1:
+                src[axis], dst[axis] = slice(1, None), slice(0, -1)
+            else:
+                src[axis], dst[axis] = slice(0, -1), slice(1, None)
+            neighbor[tuple(dst)] = solid[tuple(src)]
+            exposed = solid & ~neighbor
+
+            idx_arr = np.argwhere(exposed)
+            if len(idx_arr) == 0:
+                continue
+            shade = _FACE_SHADE[axis][0 if direction == 1 else 1]
+            colors = id_to_rgb[data[exposed]] * shade
+
+            base = idx_arr.astype(np.float64)
+            if direction == 1:
+                base[:, axis] += 1.0
+            n = len(idx_arr)
+            quad = np.repeat(base[:, None, :], 4, axis=1)
+            quad[:, :, a0] += corners[None, :, 0]
+            quad[:, :, a1] += corners[None, :, 1]
+
+            tris = tri_local[:, ::-1] if direction != axis_parity[axis] else tri_local
+            tris = (tris[None, :, :] + (np.arange(n, dtype=np.int64) * 4)[:, None, None]).reshape(-1, 3)
+            tris += vert_offset
+
+            all_verts.append(quad.reshape(-1, 3))
+            all_tris.append(tris)
+            all_colors.append(np.repeat(colors, 4, axis=0))
+            vert_offset += n * 4
+
+    mesh = o3d.geometry.TriangleMesh()
+    if all_verts:
+        mesh.vertices = o3d.utility.Vector3dVector(np.concatenate(all_verts))
+        mesh.triangles = o3d.utility.Vector3iVector(np.concatenate(all_tris).astype(np.int32))
+        mesh.vertex_colors = o3d.utility.Vector3dVector(np.concatenate(all_colors))
+    return mesh
+
+
+def _make_camera(center, radius, elev_deg, azim_deg, width, height, vfov_deg=25.0, margin=1.2):
+    """Builds a pinhole camera (standard computer-vision convention: X
+    right, Y down, Z forward) framing a sphere of `radius` around `center`,
+    looking in from `elev_deg`/`azim_deg` (degrees above the horizontal
+    plane / around the vertical Y axis). A narrow vertical FOV keeps
+    perspective distortion small so the render reads like the orthographic
+    isometric views these structures are normally judged by, while still
+    giving exact, queryable pixel<->world math (see `_project_points`) for
+    drawing the height ruler in the right place afterward."""
+    import open3d as o3d
+
+    elev, azim = np.radians(elev_deg), np.radians(azim_deg)
+    cam_dir = np.array([np.cos(elev) * np.sin(azim), np.sin(elev), np.cos(elev) * np.cos(azim)])
+    vfov = np.radians(vfov_deg)
+    distance = (radius / np.sin(vfov / 2)) * margin
+    cam_pos = center + cam_dir * distance
+
+    forward = -cam_dir
+    world_up = np.array([0.0, 1.0, 0.0])
+    right = np.cross(forward, world_up)
+    right /= np.linalg.norm(right)
+    up_cam = np.cross(right, forward)
+    R = np.stack([right, -up_cam, forward], axis=0)
+    extrinsic = np.eye(4)
+    extrinsic[:3, :3] = R
+    extrinsic[:3, 3] = -R @ cam_pos
+
+    f = (height / 2) / np.tan(vfov / 2)
+    cx, cy = width / 2 - 0.5, height / 2 - 0.5
+    params = o3d.camera.PinholeCameraParameters()
+    params.intrinsic = o3d.camera.PinholeCameraIntrinsic(width, height, f, f, cx, cy)
+    params.extrinsic = extrinsic
+    K = np.array([[f, 0, cx], [0, f, cy], [0, 0, 1]])
+    return params, extrinsic, K
+
+
+def _project_points(points, K, extrinsic):
+    """World-space (N, 3) points -> pixel (N, 2) coordinates, using the
+    exact camera built by `_make_camera` -- lets the height ruler line up
+    with the actual render instead of an approximated overlay."""
+    homogeneous = np.hstack([points, np.ones((len(points), 1))])
+    cam = (extrinsic @ homogeneous.T).T[:, :3]
+    pix = (K @ cam.T).T
+    return pix[:, :2] / pix[:, 2:3]
 
 
 BG_COLOR = "#bfe3ff"
 
 
 def _autocrop(rgb, bg_color=BG_COLOR, pad=20, tol=6):
-    """Crops away the (uniformly-colored) background margin matplotlib's 3D
-    axes always reserve around the actual voxel silhouette -- Axes3D
-    reserves a roughly cubic viewport sized for any viewing angle, so a
-    near-edge-on view (low elevation, a flat/wide structure, ...) leaves
-    huge unused bands above/below the content that plain tight_layout
-    can't remove."""
+    """Crops away the (uniformly-colored) background margin left by
+    `_make_camera`'s fixed framing -- the camera is sized to fit the
+    structure's bounding *sphere* from any angle, so a near-edge-on view
+    (low elevation, a flat/wide structure, ...) leaves large unused bands
+    above/below the content that the fixed framing alone can't remove."""
     from matplotlib.colors import to_rgb
 
     bg = np.array([round(c * 255) for c in to_rgb(bg_color)], dtype=np.int16)
@@ -272,85 +372,69 @@ def _add_title_bar(img, title, bg_color=BG_COLOR, text_color="#1a1a1a", font_siz
     fit -- drawn with PIL rather than matplotlib's own title, since a
     matplotlib title reserves layout space at figure-render time (before
     the content's actual on-screen size is known) and re-introduces the
-    same wasted-space problem _autocrop fixes."""
-    from PIL import Image, ImageDraw, ImageFont
+    same wasted-space problem _autocrop fixes.
 
-    font = None
-    for candidate in ("arial.ttf", "DejaVuSans.ttf"):
-        try:
-            font = ImageFont.truetype(candidate, font_size)
-            break
-        except OSError:
-            continue
-    if font is None:
-        font = ImageFont.load_default(size=font_size)
+    The bar widens (rather than clipping the text) when the title is wider
+    than `img` -- a real case now that `_autocrop` can produce quite narrow
+    crops (e.g. a side view's height-ruler caption easily exceeds a thin
+    structure's own width)."""
+    from PIL import Image, ImageDraw
 
+    font = _load_font(font_size)
     width, height = img.size
     bar_height = font_size + pad * 2
-    bar = Image.new("RGB", (width, bar_height), bg_color)
-    draw = ImageDraw.Draw(bar)
-    bbox = draw.textbbox((0, 0), title, font=font)
-    text_w = bbox[2] - bbox[0]
-    draw.text(((width - text_w) / 2, pad), title, fill=text_color, font=font)
+    text_w = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox((0, 0), title, font=font)[2]
+    bar_width = max(width, text_w + pad * 2)
 
-    combined = Image.new("RGB", (width, height + bar_height), bg_color)
+    bar = Image.new("RGB", (bar_width, bar_height), bg_color)
+    draw = ImageDraw.Draw(bar)
+    draw.text(((bar_width - text_w) / 2, pad), title, fill=text_color, font=font)
+
+    combined = Image.new("RGB", (bar_width, height + bar_height), bg_color)
     combined.paste(bar, (0, 0))
-    combined.paste(img, (0, bar_height))
+    combined.paste(img, ((bar_width - width) // 2, bar_height))
     return combined
 
 
-def _render_one_view(filled, colors, factor, view, title, out_path):
-    import io
+def _load_font(size):
+    from PIL import ImageFont
 
-    import matplotlib.pyplot as plt
-    from PIL import Image
-
-    fig = plt.figure(figsize=(12, 12))
-    fig.patch.set_facecolor(BG_COLOR)
-    ax = fig.add_axes([0, 0, 1, 1], projection="3d")
-    ax.set_facecolor(BG_COLOR)
-    for pane in (ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane):
-        pane.set_facecolor(BG_COLOR)
-        pane.set_edgecolor(BG_COLOR)
-    ax.voxels(filled, facecolors=colors, edgecolor=None, shade=True)
-    ax.set_box_aspect(filled.shape)
-    ax.set_axis_off()
-    ax.view_init(elev=view.get("elev", 11), azim=view.get("azim", -55))
-
-    view_title = title
-    if view.get("ruler"):
-        # A vertical ruler beside the structure with tick marks every
-        # tick_step real blocks, so foreshortening from the isometric angle
-        # can't make the scale misleading.
-        nz = np.nonzero(filled)
-        z_max_idx = int(nz[2].max()) if len(nz[2]) else filled.shape[2]
-        real_h = z_max_idx * factor
-        tick_step = view.get("tick_step", 50)
-        ruler_x = -filled.shape[0] * 0.12
-        ruler_y = filled.shape[1] / 2
-        ax.plot([ruler_x, ruler_x], [ruler_y, ruler_y], [0, z_max_idx], color="black", linewidth=1.5)
-        for real_z in range(0, real_h + 1, tick_step):
-            zi = real_z / factor
-            ax.plot([ruler_x - filled.shape[0] * 0.02, ruler_x + filled.shape[0] * 0.02],
-                    [ruler_y, ruler_y], [zi, zi], color="black", linewidth=1.2)
-            ax.text(ruler_x - filled.shape[0] * 0.07, ruler_y, zi, f"{real_z}",
-                    fontsize=9, ha="right", va="center")
-        view_title = f"{title + ' - ' if title else ''}actual height: {real_h} blocks"
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=170, facecolor=BG_COLOR)
-    plt.close(fig)
-    buf.seek(0)
-    cropped = _autocrop(np.array(Image.open(buf).convert("RGB")))
-    img = Image.fromarray(cropped)
-    if view_title:
-        img = _add_title_bar(img, view_title)
-    img.save(out_path)
-    print(f"Saved render to {out_path}")
+    for candidate in ("arial.ttf", "DejaVuSans.ttf"):
+        try:
+            return ImageFont.truetype(candidate, size)
+        except OSError:
+            continue
+    return ImageFont.load_default(size=size)
 
 
-def render_screenshot(structure, out_path, title=None, palette=None, target_max_dim=100, views=None):
-    """Renders `structure` as full shaded blocks and saves PNG(s).
+def _draw_ruler(img, K, extrinsic, bbox_min, bbox_max, y_max, tick_step):
+    """Draws a vertical height ruler beside the structure directly onto the
+    rendered pixels, using `_project_points` so its ticks land at their
+    exact real-world height regardless of camera angle -- then returns the
+    title-bar text to go with it. Drawn before `_autocrop` so the ruler
+    rides along with the crop like any other non-background content."""
+    from PIL import ImageDraw
+
+    draw = ImageDraw.Draw(img)
+    font = _load_font(16)
+    x = bbox_min[0] - (bbox_max[0] - bbox_min[0]) * 0.15
+    z = (bbox_min[2] + bbox_max[2]) / 2
+
+    top, bottom = _project_points(np.array([[x, y_max, z], [x, 0, z]]), K, extrinsic)
+    draw.line([tuple(bottom), tuple(top)], fill="black", width=2)
+    for real_y in range(0, y_max + 1, tick_step):
+        p = _project_points(np.array([[x, real_y, z]]), K, extrinsic)[0]
+        draw.line([(p[0] - 10, p[1]), (p[0] + 10, p[1])], fill="black", width=2)
+        draw.text((p[0] - 16, p[1]), str(real_y), fill="black", font=font, anchor="rm")
+    return f"actual height: {y_max} blocks"
+
+
+def render_screenshot(structure, out_path, title=None, palette=None, views=None, width=1000, height=1000):
+    """Renders `structure` as full-resolution shaded blocks -- every
+    exposed block face, flat-colored (no lighting, no texture) -- and saves
+    PNG(s). This is meant to show exactly what the structure would look
+    like assembled in Minecraft, minus block textures, not an approximation
+    of it: see `_build_exposed_face_mesh`.
 
     palette   - dict of block name -> matplotlib color spec (hex string or
                 RGB(A) tuple). Blocks missing from the palette fall back to
@@ -363,24 +447,61 @@ def render_screenshot(structure, out_path, title=None, palette=None, target_max_
                 Defaults to a single isometric view saved to out_path.
                 When explicitly given, returns a list of paths (one per
                 view) instead of a single path.
+    width, height - render resolution in pixels, before autocrop.
     """
-    # Structure.data is (X, Y, Z) with Y (axis 1) vertical, per the Atlas/
-    # Structure contract -- but matplotlib's ax.voxels() always treats an
-    # array's 3rd axis as the vertical one. Swap Y/Z once here so every
-    # caller gets a correctly-oriented render regardless of which axis their
-    # generator happens to consider "up" internally.
-    display_data = np.swapaxes(structure.data, 1, 2)
-    filled, best_id, factor = _downsample(display_data, structure.atlas, target_max_dim)
-    colors = _ids_to_colors(best_id, structure.atlas, palette or {})
+    import open3d as o3d
+    from matplotlib.colors import to_rgb
+    from PIL import Image
+
+    # Structure.data is (X, Y, Z) with Y (axis 1) vertical -- used directly
+    # here (the camera and mesh both treat axis 1 as "up"), unlike the old
+    # matplotlib-based renderer, which needed a Y/Z axis swap to satisfy
+    # ax.voxels()'s hardcoded "3rd axis is vertical" assumption.
+    data = structure.data
+    mesh = _build_exposed_face_mesh(data, structure.atlas, palette or {})
+    bbox = mesh.get_axis_aligned_bounding_box()
+    center, radius = bbox.get_center(), np.linalg.norm(bbox.get_extent()) / 2
+    y_max = int(np.nonzero(data)[1].max())
 
     out_path = Path(out_path)
     view_specs = views if views is not None else [{}]
 
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(visible=False, width=width, height=height)
+    opt = vis.get_render_option()
+    opt.light_on = False  # flat block colors only -- no lighting model, no texture
+    opt.background_color = np.array(to_rgb(BG_COLOR))
+    vis.add_geometry(mesh)
+
     saved = []
-    for view in view_specs:
-        suffix = view.get("suffix", "")
-        view_path = out_path.with_stem(out_path.stem + suffix) if suffix else out_path
-        _render_one_view(filled, colors, factor, view, title, view_path)
-        saved.append(view_path)
+    try:
+        for view in view_specs:
+            suffix = view.get("suffix", "")
+            view_path = out_path.with_stem(out_path.stem + suffix) if suffix else out_path
+
+            params, extrinsic, K = _make_camera(
+                center, radius, view.get("elev", 11), view.get("azim", -55), width, height)
+            ctr = vis.get_view_control()
+            ctr.convert_from_pinhole_camera_parameters(params, allow_arbitrary=True)
+            vis.poll_events()
+            vis.update_renderer()
+            vis.capture_screen_image(str(view_path), do_render=True)
+
+            img = Image.open(view_path).convert("RGB")
+            view_title = title
+            if view.get("ruler"):
+                height_text = _draw_ruler(
+                    img, K, extrinsic, bbox.min_bound, bbox.max_bound, y_max, view.get("tick_step", 50))
+                view_title = f"{title + ' - ' if title else ''}{height_text}"
+
+            cropped = _autocrop(np.array(img))
+            img = Image.fromarray(cropped)
+            if view_title:
+                img = _add_title_bar(img, view_title)
+            img.save(view_path)
+            print(f"Saved render to {view_path}")
+            saved.append(view_path)
+    finally:
+        vis.destroy_window()
 
     return saved if views is not None else saved[0]
