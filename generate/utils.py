@@ -412,18 +412,36 @@ def _draw_ruler(img, K, extrinsic, bbox_min, bbox_max, y_max, tick_step):
     rendered pixels, using `_project_points` so its ticks land at their
     exact real-world height regardless of camera angle -- then returns the
     title-bar text to go with it. Drawn before `_autocrop` so the ruler
-    rides along with the crop like any other non-background content."""
+    rides along with the crop like any other non-background content.
+
+    The ruler is offset sideways from the structure's own (X, Z) center
+    along the camera's *screen-right* vector (extrinsic's first row -- see
+    `_make_camera`), not along a raw world axis. `_make_camera` builds a
+    perspective (not orthographic) camera, so a point's projected height
+    depends on its distance from the camera too; offsetting along a world
+    axis that happens to be (partly) the camera's own depth axis -- as
+    world X is for a side view -- would put the ruler at a different depth
+    than the structure and make its ticks drift out of vertical alignment
+    with it. Offsetting along screen-right is depth-neutral by
+    construction (it's perpendicular to the view direction), so the ruler
+    always shares the structure's own perspective scale."""
     from PIL import ImageDraw
 
     draw = ImageDraw.Draw(img)
     font = _load_font(16)
-    x = bbox_min[0] - (bbox_max[0] - bbox_min[0]) * 0.15
-    z = (bbox_min[2] + bbox_max[2]) / 2
+    right = extrinsic[0, :3]
+    cx = (bbox_min[0] + bbox_max[0]) / 2
+    cz = (bbox_min[2] + bbox_max[2]) / 2
+    offset = max(bbox_max[0] - bbox_min[0], bbox_max[2] - bbox_min[2]) * 0.15
+    base = np.array([cx, 0.0, cz]) - right * offset
 
-    top, bottom = _project_points(np.array([[x, y_max, z], [x, 0, z]]), K, extrinsic)
+    def point_at(y):
+        return base + np.array([0.0, y, 0.0])
+
+    top, bottom = _project_points(np.array([point_at(y_max), point_at(0)]), K, extrinsic)
     draw.line([tuple(bottom), tuple(top)], fill="black", width=2)
     for real_y in range(0, y_max + 1, tick_step):
-        p = _project_points(np.array([[x, real_y, z]]), K, extrinsic)[0]
+        p = _project_points(np.array([point_at(real_y)]), K, extrinsic)[0]
         draw.line([(p[0] - 10, p[1]), (p[0] + 10, p[1])], fill="black", width=2)
         draw.text((p[0] - 16, p[1]), str(real_y), fill="black", font=font, anchor="rm")
     return f"actual height: {y_max} blocks"

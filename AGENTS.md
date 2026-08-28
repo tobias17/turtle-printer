@@ -70,6 +70,18 @@ maturity:
     ruler depends on to place its ticks precisely. If you change the camera
     setup, keep it as an explicit intrinsic/extrinsic construction, not a
     heuristic auto-fit, or the ruler will drift out of alignment.
+  - `_make_camera` is a *perspective* camera, so a world point's projected
+    height depends on its distance from the camera, not just its Y —
+    `_draw_ruler` had a real bug from this (fixed once, don't reintroduce
+    it): it used to offset the ruler sideways along raw world X, which for
+    a side view (azim=-90) is the camera's own depth axis, so the ruler
+    sat at a different distance than the structure and its ticks drifted
+    out of vertical sync with it (only became obvious once a generator's
+    base legitimately reached y=0 — before that a pre-existing gap at the
+    bottom masked it). Any point used for on-image overlays (ruler,
+    annotations, ...) must be offset along the camera's own screen-right
+    vector (`extrinsic[0, :3]`, depth-neutral by construction), never
+    along a raw world axis.
 - **Three intended outputs per generator**, in order of current priority:
   1. PNG preview via `render_screenshot()` — the only one actively used
      right now, for fast iteration on shape/look.

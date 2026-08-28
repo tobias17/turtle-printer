@@ -1,10 +1,10 @@
 """
 Giant Epic Tree Generator (~350 blocks tall)
 =============================================
-Procedurally builds a voxel model of a colossal fantasy tree -- a few thick
-roots that fork repeatedly as they plunge into the ground, a towering
-trunk, and one continuous rolling "blanket" of canopy foliage draped over a
-forking branch skeleton.
+Procedurally builds a voxel model of a colossal fantasy tree -- a towering
+trunk that simply cuts off cleanly at the bottom (there's no ground to
+root into -- it's floating in the void), and one continuous rolling
+"blanket" of canopy foliage draped over a forking branch skeleton.
 
 Grid generation is fully vectorized with numpy so it stays fast even at
 this scale (the grid has tens of millions of cells).
@@ -35,21 +35,20 @@ from utils import Atlas, Structure, render_screenshot, fractal_noise_2d, angular
 # ---------------------------------------------------------------------------
 # Grid setup -- sized for a ~350 block tall tree with a sprawling canopy
 # ---------------------------------------------------------------------------
-AIR, WOOD, LEAVES, LEAVES_DARK, LEAVES_LIGHT, DIRT = 0, 1, 2, 4, 5, 3
+AIR, WOOD, LEAVES, LEAVES_DARK, LEAVES_LIGHT = 0, 1, 2, 3, 4
 
-SIZE_X, SIZE_Y, SIZE_Z = 680, 680, 400   # Z is "up" -- wide and short: ~350 tall, very broad
+SIZE_X, SIZE_Y, SIZE_Z = 680, 680, 400   # Z is "up" -- wide and short: spans most of the 400 height
 CX, CY = SIZE_X // 2, SIZE_Y // 2
 
-ROOT_FLARE_TOP = 55       # trunk root-flare zone ends here
-TRUNK_TOP_Z = 200         # trunk becomes canopy support above this
-CANOPY_BASE_Z = 215       # vertical anchor the canopy blanket is built around
+BASE_BOTTOM_Z = 0         # trunk runs down to (nominally) the very bottom of the grid
+TRUNK_TOP_Z = 243         # trunk becomes canopy support above this
+CANOPY_BASE_Z = 263       # vertical anchor the canopy blanket is built around
 
 BLOCK_NAMES = {
     WOOD: "minecraft:oak_log",
     LEAVES: "minecraft:oak_leaves[persistent=true]",
     LEAVES_DARK: "minecraft:dark_oak_leaves[persistent=true]",
     LEAVES_LIGHT: "minecraft:birch_leaves[persistent=true]",
-    DIRT: "minecraft:dirt",
 }
 
 BLOCK_COLORS = {
@@ -57,7 +56,6 @@ BLOCK_COLORS = {
     "minecraft:oak_leaves[persistent=true]": "#3f7a30",
     "minecraft:dark_oak_leaves[persistent=true]": "#274d1c",
     "minecraft:birch_leaves[persistent=true]": "#8fc153",
-    "minecraft:dirt": "#5a3d22",
 }
 
 
@@ -121,12 +119,12 @@ def grow_limb_system(grid, origin_z, n_primary, primary_radius, primary_length,
                       angle_jitter=0.12, child_range=(2, 3),
                       radius_shrink=(0.5, 0.68), length_shrink=(0.55, 0.78),
                       z_slope_range=(0.45, 0.7), wobble_amp=3.0,
-                      tip_dirt=False, min_radius_to_fork=4.0,
+                      min_radius_to_fork=4.0,
                       fork_angle_spread=0.75, origin_xy=None):
-    """Grows a branching limb system (used for both roots and support
+    """Grows a branching limb system (used for the canopy's support
     branches) as a handful of thick primaries that periodically fork into
     thinner children, tapering and wandering organically. dive_dir=-1 makes
-    the limbs sink (roots), dive_dir=+1 makes them climb (branches)."""
+    the limbs sink, dive_dir=+1 makes them climb (branches)."""
     ox, oy = origin_xy if origin_xy else (float(CX), float(CY))
     stack = []
     for i in range(n_primary):
@@ -188,45 +186,18 @@ def grow_limb_system(grid, origin_z, n_primary, primary_radius, primary_length,
                 r2 = max(0.8, last_r * (1 - t2))
                 stamp_sphere(grid, int(cur_x), int(cur_y), int(cur_z), r2, block,
                              noise_seed=seed, noise_amp=0.6)
-            if tip_dirt:
-                stamp_sphere(grid, int(cur_x), int(cur_y), int(cur_z) - 1, last_r * 0.7,
-                             DIRT, noise_seed=_seed_mix(seed + 5), noise_amp=0.6,
-                             overwrite={AIR})
 
 
 # ---------------------------------------------------------------------------
-# 1) Roots: a handful of massive primary roots that fork repeatedly into
-#    thinner children as they plunge into the ground -- no island slab.
-# ---------------------------------------------------------------------------
-def build_roots(grid):
-    grow_limb_system(
-        grid, origin_z=ROOT_FLARE_TOP - 6, n_primary=7, primary_radius=19.0,
-        primary_length=85, dive_dir=-1, max_depth=3,
-        seed_base=300, block=WOOD, angle_jitter=0.09,
-        child_range=(2, 3), radius_shrink=(0.45, 0.62),
-        length_shrink=(0.62, 0.85), z_slope_range=(0.1, 0.2),
-        wobble_amp=4.0, tip_dirt=True, min_radius_to_fork=4.2,
-        fork_angle_spread=0.85)
-
-
-# ---------------------------------------------------------------------------
-# 2) Trunk: huge flared buttress base rising into a long, tapering,
-#    gnarled trunk.
+# 1) Trunk: a long, tapering, gnarled trunk running the full height of the
+#    tree, down to a clean cutoff at the very bottom of the grid -- no
+#    flare, no roots, no dirt, just more trunk going into the void.
 # ---------------------------------------------------------------------------
 def build_trunk(grid):
-    # Flare zone (buttress roots merging into trunk): wide at very bottom,
-    # narrowing quickly.
-    def flare_r(t):
-        return 52.0 * (1 - t) ** 0.8 + 30.0 * t
-
-    fill_tapered_column(grid, ROOT_FLARE_TOP - 10, ROOT_FLARE_TOP + 12, flare_r,
-                         WOOD, noise_seed=55, noise_amp=3.2)
-
-    # Long tall trunk, gentle taper with gnarly bark noise.
     def trunk_r(t):
         return 37.0 * (1 - t) ** 0.55 + 19.0 * t
 
-    fill_tapered_column(grid, ROOT_FLARE_TOP + 12, TRUNK_TOP_Z, trunk_r,
+    fill_tapered_column(grid, BASE_BOTTOM_Z, TRUNK_TOP_Z, trunk_r,
                          WOOD, noise_seed=57, noise_amp=2.8)
 
 
@@ -254,7 +225,7 @@ def build_canopy(grid):
         seed_base=1200, block=WOOD, angle_jitter=0.12,
         child_range=(2, 3), radius_shrink=(0.55, 0.72),
         length_shrink=(0.55, 0.72), z_slope_range=(0.14, 0.24),
-        wobble_amp=5.0, tip_dirt=False, min_radius_to_fork=4.5,
+        wobble_amp=5.0, min_radius_to_fork=4.5,
         fork_angle_spread=0.5)
 
     # --- The blanket itself -------------------------------------------------
@@ -276,14 +247,14 @@ def build_canopy(grid):
     r_norm = np.clip(r / np.maximum(footprint_r, 1e-6), 0, 1)
     taper = 1 - 0.45 * r_norm
 
-    dome = 120.0 * np.cos(r_norm * math.pi / 2) ** 0.5
+    dome = 65.0 * np.cos(r_norm * math.pi / 2) ** 0.5
     grand_noise = fractal_noise_2d(X, Y, seed=905, n=3, base_freq=0.028, amp=8) * taper        # ~225 blk folds
     top_noise = fractal_noise_2d(X, Y, seed=910, n=4, base_freq=0.10, amp=6) * taper           # ~63 blk folds
     top_noise += fractal_noise_2d(X, Y, seed=911, n=4, base_freq=0.42, amp=4)                  # ~15 blk clumps
     top_noise += fractal_noise_2d(X, Y, seed=912, n=3, base_freq=1.35, amp=1.8)                # ~5 blk roughness
     top_z = CANOPY_BASE_Z + dome + grand_noise + top_noise
 
-    thickness = 30.0 + 118.0 * np.exp(-((r_norm - 0.4) / 0.4) ** 2)
+    thickness = 22.0 + 60.0 * np.exp(-((r_norm - 0.4) / 0.4) ** 2)
     bottom_noise = fractal_noise_2d(X, Y, seed=920, n=4, base_freq=0.11, amp=12)
     bottom_noise += fractal_noise_2d(X, Y, seed=921, n=3, base_freq=0.5, amp=4)
     bottom_z = top_z - thickness + bottom_noise
@@ -352,8 +323,6 @@ def generate_tree(seed=7):
     grid = np.zeros((SIZE_X, SIZE_Y, SIZE_Z), dtype=np.uint8)
 
     t0 = time.time()
-    build_roots(grid)
-    print(f"roots done  ({time.time() - t0:.1f}s)")
     build_trunk(grid)
     print(f"trunk done  ({time.time() - t0:.1f}s)")
     build_canopy(grid)
@@ -361,8 +330,7 @@ def generate_tree(seed=7):
 
     counts = {name: int((grid == val).sum())
               for name, val in [("air", AIR), ("wood", WOOD), ("leaves", LEAVES),
-                                 ("leaves_dark", LEAVES_DARK), ("leaves_light", LEAVES_LIGHT),
-                                 ("dirt", DIRT)]}
+                                 ("leaves_dark", LEAVES_DARK), ("leaves_light", LEAVES_LIGHT)]}
     nz = np.nonzero(grid)
     print(f"bounding box height: z {nz[2].min()} to {nz[2].max()} "
           f"= {nz[2].max() - nz[2].min()} blocks tall")
