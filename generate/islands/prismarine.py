@@ -4,14 +4,16 @@ Ocean Monument Floating Island Generator for Minecraft
 
 An ocean-monument island variant: prismarine instead of natural rock or
 earth. Structurally it's deliberately ENGINEERED-looking rather than
-organic: most of the underside is a shallow, uniform shelf, but four
+organic: most of the underside is a shallow, uniform shelf, but several
 evenly-spaced (rotationally symmetric, not noise-clumped) towers of dark
-prismarine punch down through it at fixed 90-degree intervals, studded
+prismarine punch down through it at fixed angular intervals, studded
 with glowing sea lanterns - guard-tower pillars holding up a sunken
 temple, not a randomly eroded natural shape. Every other theme so far
 places its "exempted" deep bits via noise/clumping/randomness; this one
 places them via explicit rotational symmetry, which is what makes it read
-as built rather than grown.
+as built rather than grown. Tower count itself scales up with diameter
+(see _tower_count) so a bigger monument reads as more elaborate rather
+than a blown-up copy of the same 4-legged shape.
 
 Shares its silhouette/taper/drip machinery with the other island themes in
 generate/islands/ (see common.py) - this file only supplies the monument-
@@ -37,11 +39,15 @@ GRADIENT = [
     "minecraft:dark_prismarine",
 ]
 
-N_TOWERS = 4  # evenly-spaced guard towers, not noise-driven
+N_TOWERS_BASE = 4  # guard-tower count at the smallest diameters
+TOWER_SCALE_STEP = 40  # +2 towers for every this-many blocks past the base
+                        # diameter, so a bigger monument reads as grander
+                        # (more support pillars) instead of just a scaled-up
+                        # copy of the same 4-legged shape - see _tower_count
 TOWER_RADIUS_FRAC = 0.5  # r/localR band the towers sit in
 TOWER_RADIUS_TOL = 0.12  # radial tolerance around TOWER_RADIUS_FRAC
 TOWER_HALF_WIDTH = 0.16  # radians of angular tolerance per tower - narrow, so
-                          # clear gaps of bare shelf separate the four towers
+                          # clear gaps of bare shelf separate each tower
 TOWER_EXTRA_DEPTH_FRAC = 0.6  # towers punch this much further past their own
                                # natural bottom, so they read as protruding
                                # pillars regardless of where the taper ends
@@ -65,19 +71,31 @@ def pick_monument_crust(rng):
     return "minecraft:prismarine_bricks"
 
 
-def _temple_towers(blocks, col_bottom, columns, rng, max_depth):
+def _tower_count(diameter):
+    """Guard-tower count scales with diameter (always even, so towers stay
+    symmetric in antipodal pairs): 4 at the base diameter, +2 for every
+    TOWER_SCALE_STEP blocks beyond it. Without this a d=120 monument used
+    the exact same 4 towers as a d=40 one - same wedge width, same angular
+    coverage - so bigger islands just read as a blown-up copy of the small
+    ones instead of a grander structure."""
+    return N_TOWERS_BASE + 2 * max(0, (diameter - 40) // TOWER_SCALE_STEP)
+
+
+def _temple_towers(blocks, col_bottom, columns, rng, max_depth, n_towers):
     """Post-processes the already-carved (unmodified common.carve_columns)
-    underside into a shallow shelf punctuated by N_TOWERS dark-prismarine
-    towers placed at exact 90-degree (for N_TOWERS=4) intervals around a
-    fixed radius band, with a single random phase offset shared by all of
-    them so the whole set rotates together per seed but stays perfectly
-    symmetric. Columns inside a tower wedge keep their full natural depth
-    (recolored to dark prismarine, with sea-lantern accents at regular
-    intervals) instead of being flattened like every other column - the
-    same "flatten almost everything, exempt a few" trick crystal.py's geode
-    floor and ruins.py's pillars use, but the exempted set is chosen by
-    exact angle/radius symmetry instead of noise-clumping or randomness,
-    which is what reads as "built" instead of "grown" or "eroded."
+    underside into a shallow shelf punctuated by n_towers dark-prismarine
+    towers placed at exact evenly-spaced intervals around a fixed radius
+    band, with a single random phase offset shared by all of them so the
+    whole set rotates together per seed but stays perfectly symmetric.
+    Columns inside a tower wedge keep their full natural depth (recolored
+    to dark prismarine, with sea-lantern accents at regular intervals)
+    instead of being flattened like every other column - the same "flatten
+    almost everything, exempt a few" trick crystal.py's geode floor and
+    ruins.py's pillars use, but the exempted set is chosen by exact
+    angle/radius symmetry instead of noise-clumping or randomness, which is
+    what reads as "built" instead of "grown" or "eroded." n_towers itself
+    (see _tower_count) grows with diameter so larger monuments read as
+    more elaborate, not just a bigger copy of the same 4 legs.
 
     Like desert.py's mesa terracing, this only ever *removes* already-
     carved blocks (tower columns are only recolored, never extended) and
@@ -87,8 +105,8 @@ def _temple_towers(blocks, col_bottom, columns, rng, max_depth):
     """
     shelf_depth = max(4, int(max_depth * 0.3))
     tower_extra = max(6, int(max_depth * TOWER_EXTRA_DEPTH_FRAC))
-    phase = rng.uniform(0, 2 * math.pi / N_TOWERS)
-    target_angles = [phase + i * (2 * math.pi / N_TOWERS) for i in range(N_TOWERS)]
+    phase = rng.uniform(0, 2 * math.pi / n_towers)
+    target_angles = [phase + i * (2 * math.pi / n_towers) for i in range(n_towers)]
 
     def recolor(y):
         if (topY - y) % LANTERN_SPACING == 0:
@@ -170,9 +188,10 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
     )
-    # flatten to a shelf, punch four symmetric guard towers through it - see
-    # _temple_towers above.
-    _temple_towers(blocks, col_bottom, columns, rng, max_depth)
+    # flatten to a shelf, punch symmetric guard towers through it - see
+    # _temple_towers/_tower_count above.
+    n_towers = _tower_count(diameter)
+    _temple_towers(blocks, col_bottom, columns, rng, max_depth, n_towers)
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):
