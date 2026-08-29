@@ -25,47 +25,43 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Mycelium crust down through boggy dirt/mud into bare rock at the core.
+# Mycelium crust over solid dirt "cap flesh" - kept to just these two so the
+# cap underside reads as one clean fleshy mass; the stem is recolored
+# separately (see _cap_and_stem) so it reads as an actual stem, not more cap.
 GRADIENT = [
     "minecraft:mycelium",
     "minecraft:dirt",
-    "minecraft:coarse_dirt",
-    "minecraft:mud",
-    "minecraft:stone",
 ]
 
-FLECK_CHANCE = 0.02  # rare podzol fleck at any depth, for variety
+STEM_BLOCK = "minecraft:mushroom_stem"
 
 
 def pick_gradient(rng, t, jitter=0.0):
     """Picks a block for depth-fraction t in [0, 1] (0 = right at the
-    mycelium crust, 1 = deepest rock). `jitter` blends toward a neighboring
-    shade for per-column/per-voxel randomness instead of a perfectly smooth
-    band."""
+    mycelium crust, 1 = deepest rock). `jitter` (driven only by smooth
+    per-column noise) nudges the whole column toward a neighboring shade so
+    the band edge is wavy instead of a razor-straight ring, without
+    per-voxel dithering."""
     n = len(GRADIENT)
     pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    pos = min(max(pos, 0.0), n - 1)
-    lo = int(math.floor(pos))
-    hi = min(lo + 1, n - 1)
-    frac = pos - lo
-    block = GRADIENT[hi] if rng.random() < frac else GRADIENT[lo]
-    if rng.random() < FLECK_CHANCE:
-        block = "minecraft:podzol"
-    return block
+    idx = int(round(min(max(pos, 0.0), n - 1)))
+    return GRADIENT[idx]
 
 
 def pick_mycelium_crust(rng):
-    """Top-crust / shallow-band block: mycelium with a rare podzol fleck."""
-    return "minecraft:podzol" if rng.random() < 0.05 else "minecraft:mycelium"
+    """Top-crust block: solid mycelium, no fleck - a flat platform."""
+    return "minecraft:mycelium"
 
 
-def _cap_and_stem(blocks, col_bottom, columns, max_depth):
+def _cap_and_stem(blocks, col_bottom, columns, rng, max_depth):
     """Post-processes the already-carved (unmodified common.carve_columns)
     underside into an actual mushroom silhouette - a wide, shallow cap
     underside (roughly constant depth regardless of radius, like the flat
     gill surface under a real mushroom cap) with a single thick stem plunging
     down from the center - instead of the smooth cone every theme starts
-    from.
+    from. The stem columns are also recolored solid `STEM_BLOCK` (the real
+    white mushroom-stem block) so the stem reads as an actual stem instead
+    of just deeper dirt.
 
     Like desert.py's mesa terracing, this only ever *removes* already-carved
     blocks and keeps col_bottom/columns in sync (drips/rim decoration read
@@ -85,6 +81,10 @@ def _cap_and_stem(blocks, col_bottom, columns, max_depth):
             col_bottom[(x, z)] = (new_bottomY, topY, r, localR)
             new_columns.append((x, z, topY, cap_depth, r, localR))
         else:
+            if frac < 0.18:
+                bottomY, _, _, _ = col_bottom[(x, z)]
+                for y in range(bottomY, topY):
+                    blocks[(x, y, z)] = STEM_BLOCK
             new_columns.append((x, z, topY, depth, r, localR))
     columns[:] = new_columns
 
@@ -123,43 +123,33 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
             return pick_mycelium_crust(rng)
         g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        return pick_gradient(rng, t_grad, jitter=g_jitter + rng.uniform(-0.9, 0.9))
-
-    def bottom_face(rng, blocks, x, z, bottomY, r, localR):
-        # damp mycelium/podzol patches breaking through the bare rock on the
-        # very underside, as if the fungal crust is spreading down through
-        # cracks rather than staying a purely cosmetic top layer.
-        if r / localR > 0.55 and rng.random() < 0.3:
-            blocks[(x, bottomY, z)] = "minecraft:podzol" if rng.random() < 0.4 else "minecraft:mycelium"
+        return pick_gradient(rng, t_grad, jitter=g_jitter)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
-        bottom_face_fn=bottom_face,
         # a cap-like taper: stays close to full width just under the rim
         # (like a mushroom cap's flesh) then narrows quickly further down -
         # both existing carve_columns parameters, no shared code touched.
         taper_strength=0.9, taper_exponent=1.6,
     )
-    # reshape the smooth cone into a flat cap + central stem - see
-    # _cap_and_stem above.
-    _cap_and_stem(blocks, col_bottom, columns, max_depth)
+    # reshape the smooth cone into a flat cap + central stem (recolored solid
+    # white) - see _cap_and_stem above.
+    _cap_and_stem(blocks, col_bottom, columns, rng, max_depth)
 
     if decorate_underside:
         # root tendrils are their own palette - muddy mangrove roots, with
         # a rare glowing shroomlight tip instead of a plain end.
         def drip_block(rng, t, is_tip):
-            if is_tip:
-                return "minecraft:shroomlight" if rng.random() < 0.25 else "minecraft:muddy_mangrove_roots"
-            return "minecraft:muddy_mangrove_roots"
+            return "minecraft:shroomlight" if is_tip else "minecraft:muddy_mangrove_roots"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
 
-        # a denser curtain of vines/glow lichen than the other themes - a
-        # swamp canopy's hanging roots and moss are thick, not sparse.
+        # a denser curtain of vines than the other themes - a swamp canopy's
+        # hanging roots and moss are thick, not sparse.
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:glow_lichen" if rng.random() < 0.25 else "minecraft:vine",
+            rim_block_fn=lambda rng: "minecraft:vine",
             r_frac_threshold=0.45, chance=0.32, length_range=(3, 8),
         )
 
@@ -201,18 +191,13 @@ def generate_scene(seed=0):
 
 BLOCK_COLORS = {
     "minecraft:mycelium": "#6f5a6e",
-    "minecraft:podzol": "#5b4328",
     "minecraft:dirt": "#6b4a2b",
-    "minecraft:coarse_dirt": "#7a5a3a",
-    "minecraft:mud": "#4a4038",
-    "minecraft:stone": "#8a8a8a",
+    "minecraft:mushroom_stem": "#e8e0d0",
     "minecraft:muddy_mangrove_roots": "#4a3828",
     "minecraft:shroomlight": "#f0a030",
     "minecraft:vine": "#3f6b2a",
-    "minecraft:glow_lichen": "#7fdc6f",
     "minecraft:red_mushroom": "#c03030",
     "minecraft:brown_mushroom": "#8a6a48",
-    "minecraft:mushroom_stem": "#e8e0d0",
     "minecraft:red_mushroom_block": "#a83232",
     "minecraft:brown_mushroom_block": "#9c7a52",
 }

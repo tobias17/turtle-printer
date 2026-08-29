@@ -28,17 +28,14 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Mossy masonry crust down through cracked brick and cobblestone into the
-# plain rock core.
+# Mossy masonry crust down through stone brick into cobblestone at the
+# core - kept to 2 solid bands (no fleck/dither) so the terrace steps below
+# read as clean masonry tiers.
 GRADIENT = [
     "minecraft:mossy_stone_bricks",
-    "minecraft:stone_bricks",
-    "minecraft:cracked_stone_bricks",
     "minecraft:cobblestone",
-    "minecraft:stone",
 ]
 
-FLECK_CHANCE = 0.02  # rare chiseled-brick fleck at any depth, for variety
 NUM_TIERS = 5  # blocky masonry terraces, same trick as desert.py's mesa shelves
 PILLAR_COUNT_RANGE = (2, 4)
 PILLAR_RADIUS = 1  # half-width beyond the center block, so pillars are 3x3
@@ -46,25 +43,18 @@ PILLAR_RADIUS = 1  # half-width beyond the center block, so pillars are 3x3
 
 def pick_gradient(rng, t, jitter=0.0):
     """Picks a block for depth-fraction t in [0, 1] (0 = right at the mossy
-    crust, 1 = deepest rock). `jitter` blends toward a neighboring shade for
-    per-column/per-voxel randomness instead of a perfectly smooth band."""
+    crust, 1 = deepest rock). `jitter` (driven only by smooth per-column
+    noise) nudges the whole column toward a neighboring shade so the band
+    edge is wavy instead of a razor-straight ring, without per-voxel
+    dithering."""
     n = len(GRADIENT)
     pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    pos = min(max(pos, 0.0), n - 1)
-    lo = int(math.floor(pos))
-    hi = min(lo + 1, n - 1)
-    frac = pos - lo
-    block = GRADIENT[hi] if rng.random() < frac else GRADIENT[lo]
-    if rng.random() < FLECK_CHANCE:
-        block = "minecraft:chiseled_stone_bricks"
-    return block
+    idx = int(round(min(max(pos, 0.0), n - 1)))
+    return GRADIENT[idx]
 
 
 def pick_ruins_crust(rng):
-    """Top-crust / shallow-band block: moss with broken brick flooring
-    showing through."""
-    if rng.random() < 0.1:
-        return "minecraft:cracked_stone_bricks" if rng.random() < 0.5 else "minecraft:stone_bricks"
+    """Top-crust block: solid moss, no fleck - the crust is a flat platform."""
     return "minecraft:moss_block"
 
 
@@ -100,8 +90,7 @@ def _terrace_and_pillars(blocks, col_bottom, columns, rng, max_depth):
         bottomY, _, _, _ = col_bottom[(x, z)]
         if (x, z) in pillar_xy:
             for y in range(bottomY, topY):
-                blocks[(x, y, z)] = ("minecraft:mossy_stone_bricks" if rng.random() < 0.7
-                                      else "minecraft:cracked_stone_bricks")
+                blocks[(x, y, z)] = "minecraft:mossy_stone_bricks"
             new_columns.append((x, z, topY, depth, r, localR))
             continue
         new_depth = band_size * (depth // band_size)
@@ -153,7 +142,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
         depth_bands = max(1, (thickness - 1 + max_depth) // band_size_guess)
         band_t = math.floor(min(max(t_grad, 0.0), 0.999999) * depth_bands) / depth_bands
-        return pick_gradient(rng, band_t, jitter=g_jitter + rng.uniform(-0.5, 0.5))
+        return pick_gradient(rng, band_t, jitter=g_jitter)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -216,11 +205,7 @@ def generate_scene(seed=0):
 BLOCK_COLORS = {
     "minecraft:moss_block": "#5a7a2f",
     "minecraft:mossy_stone_bricks": "#6a7a5a",
-    "minecraft:stone_bricks": "#8a8a82",
-    "minecraft:cracked_stone_bricks": "#77776f",
-    "minecraft:chiseled_stone_bricks": "#8f8f87",
     "minecraft:cobblestone": "#7a7a7a",
-    "minecraft:stone": "#8a8a8a",
     "minecraft:vine": "#3f6b2a",
     "minecraft:moss_carpet": "#4f7a2a",
     "minecraft:fern": "#4f8f3f",

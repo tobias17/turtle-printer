@@ -26,16 +26,15 @@ import common
 # ---------------------------------------------------------------------------
 
 # Sand crust down through banded sandstone/terracotta (badlands-style
-# strata) into bare rock at the core.
+# strata) into bare rock at the core. Each band is solid (no fleck/dither)
+# so the mesa shelves below read as clean stacked strata.
 GRADIENT = [
-    "minecraft:sand",
     "minecraft:sandstone",
     "minecraft:orange_terracotta",
     "minecraft:terracotta",
     "minecraft:stone",
 ]
 
-FLECK_CHANCE = 0.02  # rare red-sandstone fleck at any depth, for banding variety
 NUM_TERRACES = 5  # how many mesa shelves the underside steps through, regardless of size
 
 
@@ -69,24 +68,20 @@ def _terrace_columns(blocks, col_bottom, columns, band_size):
 
 def pick_gradient(rng, t, jitter=0.0):
     """Picks a block for depth-fraction t in [0, 1] (0 = right at the sand
-    crust, 1 = deepest rock). `jitter` blends toward a neighboring shade for
-    per-column/per-voxel randomness so the strata read as banded, not a
-    perfectly smooth gradient."""
+    crust, 1 = deepest rock). `jitter` (driven only by smooth per-column
+    noise) nudges the whole column toward a neighboring band so the strata
+    boundary is wavy instead of a razor-straight ring; each band itself is
+    solid (deterministic rounding, no per-voxel dither) so it reads as one
+    clean stratum."""
     n = len(GRADIENT)
     pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    pos = min(max(pos, 0.0), n - 1)
-    lo = int(math.floor(pos))
-    hi = min(lo + 1, n - 1)
-    frac = pos - lo
-    block = GRADIENT[hi] if rng.random() < frac else GRADIENT[lo]
-    if rng.random() < FLECK_CHANCE:
-        block = "minecraft:red_sandstone"
-    return block
+    idx = int(round(min(max(pos, 0.0), n - 1)))
+    return GRADIENT[idx]
 
 
 def pick_sand_crust(rng):
-    """Top-crust / shallow-band block: sand with a rare red-sand fleck."""
-    return "minecraft:red_sand" if rng.random() < 0.08 else "minecraft:sand"
+    """Top-crust block: solid sand, no fleck - the crust is a flat platform."""
+    return "minecraft:sand"
 
 
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
@@ -133,7 +128,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # that's what actually makes it look like badlands strata.
         depth_bands = max(1, (thickness - 1 + max_depth) // band_size)
         band_t = math.floor(min(max(t_grad, 0.0), 0.999999) * depth_bands) / depth_bands
-        return pick_gradient(rng, band_t, jitter=g_jitter + rng.uniform(-0.5, 0.5))
+        return pick_gradient(rng, band_t, jitter=g_jitter)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -144,7 +139,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):
-            return "minecraft:red_sand" if is_tip else "minecraft:sandstone"
+            return "minecraft:terracotta" if is_tip else "minecraft:sandstone"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
@@ -153,7 +148,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # desert - just weathered rock hanging on)
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:sandstone" if rng.random() < 0.7 else "minecraft:red_sandstone",
+            rim_block_fn=lambda rng: "minecraft:sandstone",
             r_frac_threshold=0.55, chance=0.12, length_range=(1, 3),
         )
 
@@ -187,9 +182,7 @@ def generate_scene(seed=0):
 
 BLOCK_COLORS = {
     "minecraft:sand": "#e3d2a0",
-    "minecraft:red_sand": "#bf6a3a",
     "minecraft:sandstone": "#d8c98a",
-    "minecraft:red_sandstone": "#9c5028",
     "minecraft:orange_terracotta": "#a34d27",
     "minecraft:terracotta": "#8f5a44",
     "minecraft:stone": "#8a8a8a",

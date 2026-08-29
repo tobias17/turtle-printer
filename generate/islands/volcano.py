@@ -41,39 +41,31 @@ import common
 
 # Dark-to-less-dark stone gradient, in order from the black crust down to
 # the (still dark) grey found deep underneath / at drip tips. Deliberately
-# stays in the black/dark-grey range - no light or white stone.
+# stays in the black/dark-grey range - no light or white stone. Kept to just
+# 3 solid bands (no fleck/dither) so the taper reads as clean strata instead
+# of static; the magma veins below are what carries the visual interest.
 GRADIENT = [
     "minecraft:blackstone",
-    "minecraft:deepslate",
     "minecraft:basalt",
-    "minecraft:cobbled_deepslate",
-    "minecraft:tuff",
+    "minecraft:deepslate",
 ]
-
-OBSIDIAN_CHANCE = 0.025  # rare dark fleck, at any depth, for a bit of randomness
 
 
 def pick_gradient(rng, t, jitter=0.0):
     """Picks a stone block for depth-fraction t in [0, 1] (0 = right at the
     black crust, 1 = deepest/lightest). `jitter` (in gradient-index units,
-    can be negative) blends the pick toward a neighboring shade for
-    per-column/per-voxel randomness instead of a perfectly smooth band."""
+    can be negative, driven only by smooth per-column noise) nudges the
+    whole column toward a neighboring shade so band edges are wavy instead
+    of a razor-straight ring, without introducing per-voxel dithering."""
     n = len(GRADIENT)
     pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    pos = min(max(pos, 0.0), n - 1)
-    lo = int(math.floor(pos))
-    hi = min(lo + 1, n - 1)
-    frac = pos - lo
-    block = GRADIENT[hi] if rng.random() < frac else GRADIENT[lo]
-    if rng.random() < OBSIDIAN_CHANCE:
-        block = "minecraft:obsidian"
-    return block
+    idx = int(round(min(max(pos, 0.0), n - 1)))
+    return GRADIENT[idx]
 
 
 def pick_black(rng):
-    """Top-crust / shallow-band block: solid black with a rare obsidian
-    fleck for a touch of randomness."""
-    return "minecraft:obsidian" if rng.random() < 0.04 else "minecraft:blackstone"
+    """Top-crust block: solid black, no fleck - the crust is a flat platform."""
+    return "minecraft:blackstone"
 
 
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
@@ -126,7 +118,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         vein_phase = math.sin(y_offset * 0.6 + lava_vein_noise[xi, zi] * 5.0)
         if vein_phase > LAVA_VEIN_THRESHOLD:
             return "minecraft:magma_block"
-        return pick_gradient(rng, t_grad, jitter=g_jitter + rng.uniform(-0.9, 0.9))
+        return pick_gradient(rng, t_grad, jitter=g_jitter)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -140,8 +132,8 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     if decorate_underside:
         def drip_block(rng, t, is_tip):
             # drips hang below the island's own deepest point, so they sit
-            # at the pale end of the gradient, with the usual randomness
-            return pick_gradient(rng, 0.8 + 0.2 * t, jitter=rng.uniform(-0.6, 0.6))
+            # at the pale, deep end of the gradient - solid, no dither.
+            return "minecraft:deepslate"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
@@ -149,7 +141,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # a few bare hanging dark "icicles" near the outer rim (replaces
         # grass.py's draped vines)
         common.decorate_rim_underside(rng, blocks, columns, col_bottom,
-                                       rim_block_fn=lambda rng: pick_gradient(rng, 0.9),
+                                       rim_block_fn=lambda rng: "minecraft:deepslate",
                                        r_frac_threshold=0.55, chance=0.12, length_range=(1, 3))
 
     if decorate_top:
@@ -178,12 +170,9 @@ def generate_scene(seed=0):
 
 BLOCK_COLORS = {
     "minecraft:blackstone": "#2b2626",
-    "minecraft:obsidian": "#161022",
     "minecraft:deepslate": "#393a3d",
     "minecraft:basalt": "#4a484c",
     "minecraft:polished_basalt": "#5a5760",
-    "minecraft:cobbled_deepslate": "#55565a",
-    "minecraft:tuff": "#6a6b64",
     "minecraft:magma_block": "#c9591a",
 }
 

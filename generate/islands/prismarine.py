@@ -30,16 +30,13 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Prismarine crust down through dark prismarine into the plain rock core.
+# Prismarine crust down to dark prismarine at the core - kept to 2 solid
+# bands (no fleck/dither) so the shelf reads as clean masonry.
 GRADIENT = [
-    "minecraft:prismarine",
     "minecraft:prismarine_bricks",
     "minecraft:dark_prismarine",
-    "minecraft:cobbled_deepslate",
-    "minecraft:stone",
 ]
 
-SPONGE_CHANCE = 0.02  # rare wet-sponge fleck at any depth, for variety
 N_TOWERS = 4  # evenly-spaced guard towers, not noise-driven
 TOWER_RADIUS_FRAC = 0.5  # r/localR band the towers sit in
 TOWER_RADIUS_TOL = 0.12  # radial tolerance around TOWER_RADIUS_FRAC
@@ -53,25 +50,19 @@ LANTERN_SPACING = 7  # blocks between sea-lantern accents up a tower
 
 def pick_gradient(rng, t, jitter=0.0):
     """Picks a block for depth-fraction t in [0, 1] (0 = right at the
-    prismarine crust, 1 = deepest rock). `jitter` blends toward a
-    neighboring shade for per-column/per-voxel randomness instead of a
-    perfectly smooth band."""
+    prismarine crust, 1 = deepest rock). `jitter` (driven only by smooth
+    per-column noise) nudges the whole column toward a neighboring shade so
+    the band edge is wavy instead of a razor-straight ring, without
+    per-voxel dithering."""
     n = len(GRADIENT)
     pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    pos = min(max(pos, 0.0), n - 1)
-    lo = int(math.floor(pos))
-    hi = min(lo + 1, n - 1)
-    frac = pos - lo
-    block = GRADIENT[hi] if rng.random() < frac else GRADIENT[lo]
-    if rng.random() < SPONGE_CHANCE:
-        block = "minecraft:wet_sponge"
-    return block
+    idx = int(round(min(max(pos, 0.0), n - 1)))
+    return GRADIENT[idx]
 
 
 def pick_monument_crust(rng):
-    """Top-crust / shallow-band block: prismarine bricks with the odd plain
-    prismarine seam."""
-    return "minecraft:prismarine" if rng.random() < 0.3 else "minecraft:prismarine_bricks"
+    """Top-crust block: solid prismarine bricks, no fleck - a flat platform."""
+    return "minecraft:prismarine_bricks"
 
 
 def _temple_towers(blocks, col_bottom, columns, rng, max_depth):
@@ -100,11 +91,10 @@ def _temple_towers(blocks, col_bottom, columns, rng, max_depth):
     target_angles = [phase + i * (2 * math.pi / N_TOWERS) for i in range(N_TOWERS)]
 
     def recolor(y):
-        if (topY - y) % LANTERN_SPACING == 0 and rng.random() < 0.6:
+        if (topY - y) % LANTERN_SPACING == 0:
             blocks[(x, y, z)] = "minecraft:sea_lantern"
         else:
-            blocks[(x, y, z)] = ("minecraft:dark_prismarine" if rng.random() < 0.75
-                                  else "minecraft:prismarine_bricks")
+            blocks[(x, y, z)] = "minecraft:dark_prismarine"
 
     new_columns = []
     for (x, z, topY, depth, r, localR) in columns:
@@ -175,7 +165,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
             return pick_monument_crust(rng)
         g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        return pick_gradient(rng, t_grad, jitter=g_jitter + rng.uniform(-0.9, 0.9))
+        return pick_gradient(rng, t_grad, jitter=g_jitter)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -186,9 +176,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):
-            if is_tip:
-                return "minecraft:sea_lantern" if rng.random() < 0.2 else "minecraft:dark_prismarine"
-            return "minecraft:prismarine_bricks" if rng.random() < 0.5 else "minecraft:cobbled_deepslate"
+            return "minecraft:sea_lantern" if is_tip else "minecraft:dark_prismarine"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
@@ -229,12 +217,8 @@ def generate_scene(seed=0):
 # ---------------------------------------------------------------------------
 
 BLOCK_COLORS = {
-    "minecraft:prismarine": "#5aa89a",
     "minecraft:prismarine_bricks": "#6fc2ad",
     "minecraft:dark_prismarine": "#2f5a4a",
-    "minecraft:cobbled_deepslate": "#55565a",
-    "minecraft:stone": "#8a8a8a",
-    "minecraft:wet_sponge": "#9a9a3a",
     "minecraft:sea_lantern": "#d6f0e0",
     "minecraft:kelp": "#3f7a3f",
     "minecraft:sea_pickle": "#a8c93a",

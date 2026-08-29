@@ -27,39 +27,31 @@ import common
 # ---------------------------------------------------------------------------
 
 # Neutral geode-cave rock, pale at the surface and darkening with depth.
-# Amethyst is handled separately (as decoration/drips), not part of the
-# bulk gradient.
+# Amethyst is handled separately (as the vein/spike/floor structural
+# features below), not part of the bulk gradient - kept to 2 solid bands so
+# the bulk rock reads as plain stone and the crystal reads as something
+# growing THROUGH it, not speckled into it.
 GRADIENT = [
     "minecraft:calcite",
-    "minecraft:tuff",
     "minecraft:deepslate",
-    "minecraft:smooth_basalt",
 ]
-
-AMETHYST_FLECK_CHANCE = 0.015  # rare crystal breaking through the bulk rock
 
 
 def pick_gradient(rng, t, jitter=0.0):
     """Picks a block for depth-fraction t in [0, 1] (0 = right at the
-    calcite crust, 1 = deepest rock). `jitter` blends toward a neighboring
-    shade for per-column/per-voxel randomness instead of a perfectly smooth
-    band."""
+    calcite crust, 1 = deepest rock). `jitter` (driven only by smooth
+    per-column noise) nudges the whole column toward a neighboring shade so
+    the band edge is wavy instead of a razor-straight ring, without
+    per-voxel dithering."""
     n = len(GRADIENT)
     pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    pos = min(max(pos, 0.0), n - 1)
-    lo = int(math.floor(pos))
-    hi = min(lo + 1, n - 1)
-    frac = pos - lo
-    block = GRADIENT[hi] if rng.random() < frac else GRADIENT[lo]
-    if rng.random() < AMETHYST_FLECK_CHANCE:
-        block = "minecraft:amethyst_block"
-    return block
+    idx = int(round(min(max(pos, 0.0), n - 1)))
+    return GRADIENT[idx]
 
 
 def pick_calcite_crust(rng):
-    """Top-crust / shallow-band block: calcite with a rare amethyst fleck
-    already breaking the surface."""
-    return "minecraft:amethyst_block" if rng.random() < 0.03 else "minecraft:calcite"
+    """Top-crust block: solid calcite, no fleck - the crust is a flat platform."""
+    return "minecraft:calcite"
 
 
 SPIKE_RADIUS_FRAC = 0.3  # spikes only ever spawn this close to center
@@ -103,11 +95,7 @@ def _carve_geode_cavity(blocks, col_bottom, columns, rng, max_depth):
         new_bottomY = topY - floor_depth
         for y in range(bottomY, new_bottomY):
             blocks.pop((x, y, z), None)
-        blocks[(x, new_bottomY, z)] = common.weighted_choice(rng, [
-            ("minecraft:budding_amethyst", 0.4),
-            ("minecraft:amethyst_block", 0.35),
-            ("minecraft:amethyst_cluster", 0.25),
-        ])
+        blocks[(x, new_bottomY, z)] = "minecraft:budding_amethyst"
         if rng.random() < 0.5:
             blocks[(x, new_bottomY + 1, z)] = "minecraft:amethyst_cluster"
         col_bottom[(x, z)] = (new_bottomY, topY, r, localR)
@@ -159,12 +147,10 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
         vein_phase = math.sin(y_offset * 0.8 + vein_phase_noise[xi, zi] * 6.0)
         if vein_phase > VEIN_THRESHOLD:
-            return common.weighted_choice(rng, [
-                ("minecraft:amethyst_block", 0.65),
-                ("minecraft:amethyst_cluster", 0.2),
-                ("minecraft:budding_amethyst", 0.15),
-            ])
-        return pick_gradient(rng, t_grad, jitter=g_jitter + rng.uniform(-0.9, 0.9))
+            # solid amethyst so the vein reads as one clean seam, not a
+            # speckled streak
+            return "minecraft:amethyst_block"
+        return pick_gradient(rng, t_grad, jitter=g_jitter)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -178,9 +164,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # neutral bulk rock - solid amethyst body, a cluster of "petals" at
         # the tip so it reads as a growing crystal rather than a rock icicle.
         def drip_block(rng, t, is_tip):
-            if is_tip:
-                return "minecraft:amethyst_cluster" if rng.random() < 0.6 else "minecraft:budding_amethyst"
-            return "minecraft:amethyst_block"
+            return "minecraft:amethyst_cluster" if is_tip else "minecraft:amethyst_block"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
@@ -188,7 +172,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # small bare crystal shards near the outer rim
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:amethyst_cluster" if rng.random() < 0.5 else "minecraft:amethyst_block",
+            rim_block_fn=lambda rng: "minecraft:amethyst_cluster",
             r_frac_threshold=0.55, chance=0.1, length_range=(1, 2),
         )
 
@@ -229,9 +213,7 @@ def generate_scene(seed=0):
 
 BLOCK_COLORS = {
     "minecraft:calcite": "#e8e4d0",
-    "minecraft:tuff": "#6a6b64",
     "minecraft:deepslate": "#393a3d",
-    "minecraft:smooth_basalt": "#4a484c",
     "minecraft:amethyst_block": "#8f5fd1",
     "minecraft:budding_amethyst": "#7c4fc0",
     "minecraft:amethyst_cluster": "#a875e0",

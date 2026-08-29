@@ -39,16 +39,6 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-STONE_VARIANTS = [
-    ("minecraft:stone", 0.85),
-    ("minecraft:andesite", 0.15),
-]
-
-
-def pick_stone(rng):
-    return common.weighted_choice(rng, STONE_VARIANTS)
-
-
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
                      num_drips=None, drip_density=0.05, flat_top=True, decorate_top=False,
                      decorate_underside=True, offset=(0, 0, 0)):
@@ -84,7 +74,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         return "minecraft:grass_block"
 
     def body_block(rng, x, z, xi, zi, y_offset, thickness, total_depth):
-        return "minecraft:dirt" if y_offset < thickness else pick_stone(rng)
+        return "minecraft:dirt" if y_offset < thickness else "minecraft:stone"
 
     def bottom_face(rng, blocks, x, z, bottomY, r, localR):
         # occasional moss cap on the very bottom face near the edge

@@ -28,43 +28,33 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Mud/moss crust down through muddy mangrove roots and clay into the plain
-# rock core.
+# Mud crust down to plain rock at the core - kept to 2 solid bands (no
+# fleck/dither); the mangrove-root colors are reserved exclusively for the
+# rim skirt's root trunks (see _grow_root_trunks) so roots read as a
+# distinct material growing off the island, not more bulk texture.
 GRADIENT = [
     "minecraft:mud",
-    "minecraft:muddy_mangrove_roots",
-    "minecraft:mangrove_roots",
-    "minecraft:clay",
     "minecraft:stone",
 ]
 
-FLECK_CHANCE = 0.02  # rare clay fleck at any depth, for banding variety
-POOL_CHANCE = 0.06  # rare bog-water pool breaking through the mud crust
 RIM_BAND = (0.5, 0.95)  # r/localR range that keeps full depth + grows roots
 
 
 def pick_gradient(rng, t, jitter=0.0):
     """Picks a block for depth-fraction t in [0, 1] (0 = right at the mud
-    crust, 1 = deepest rock). `jitter` blends toward a neighboring shade for
-    per-column/per-voxel randomness instead of a perfectly smooth band."""
+    crust, 1 = deepest rock). `jitter` (driven only by smooth per-column
+    noise) nudges the whole column toward a neighboring shade so the band
+    edge is wavy instead of a razor-straight ring, without per-voxel
+    dithering."""
     n = len(GRADIENT)
     pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    pos = min(max(pos, 0.0), n - 1)
-    lo = int(math.floor(pos))
-    hi = min(lo + 1, n - 1)
-    frac = pos - lo
-    block = GRADIENT[hi] if rng.random() < frac else GRADIENT[lo]
-    if rng.random() < FLECK_CHANCE:
-        block = "minecraft:clay"
-    return block
+    idx = int(round(min(max(pos, 0.0), n - 1)))
+    return GRADIENT[idx]
 
 
 def pick_bog_crust(rng):
-    """Top-crust / shallow-band block: mud with the odd patch of moss, and a
-    rare open bog pool breaking through."""
-    if rng.random() < POOL_CHANCE:
-        return "minecraft:water"
-    return "minecraft:moss_block" if rng.random() < 0.25 else "minecraft:mud"
+    """Top-crust block: solid mud, no fleck - the crust is a flat platform."""
+    return "minecraft:mud"
 
 
 def _rim_skirt(blocks, col_bottom, columns, max_depth):
@@ -127,8 +117,7 @@ def _grow_root_trunks(blocks, columns, col_bottom, rng, max_depth):
             fx += dirx * drift
             fz += dirz * drift
             bx, bz = round(fx), round(fz)
-            block = "minecraft:muddy_mangrove_roots" if rng.random() < 0.55 else "minecraft:mangrove_roots"
-            blocks.setdefault((bx, y, bz), block)
+            blocks.setdefault((bx, y, bz), "minecraft:mangrove_roots")
 
 
 def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=14,
@@ -166,7 +155,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
             return pick_bog_crust(rng)
         g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        return pick_gradient(rng, t_grad, jitter=g_jitter + rng.uniform(-0.9, 0.9))
+        return pick_gradient(rng, t_grad, jitter=g_jitter)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -180,9 +169,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
         _grow_root_trunks(blocks, columns, col_bottom, rng, max_depth)
 
         def drip_block(rng, t, is_tip):
-            if is_tip:
-                return "minecraft:mangrove_roots"
-            return "minecraft:muddy_mangrove_roots" if rng.random() < 0.5 else "minecraft:mud"
+            return "minecraft:mangrove_roots" if is_tip else "minecraft:mud"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
@@ -190,7 +177,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
         # a bit of hanging moss near the outer rim
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:moss_carpet" if rng.random() < 0.4 else "minecraft:mangrove_roots",
+            rim_block_fn=lambda rng: "minecraft:moss_carpet",
             r_frac_threshold=0.55, chance=0.2, length_range=(2, 5),
         )
 
@@ -231,11 +218,7 @@ def generate_scene(seed=0):
 
 BLOCK_COLORS = {
     "minecraft:mud": "#4d3d2d",
-    "minecraft:moss_block": "#5a7a2f",
-    "minecraft:water": "#3f76e4",
-    "minecraft:muddy_mangrove_roots": "#5c4a3a",
     "minecraft:mangrove_roots": "#5a3d28",
-    "minecraft:clay": "#9aa3ad",
     "minecraft:stone": "#8a8a8a",
     "minecraft:moss_carpet": "#4f7a2a",
     "minecraft:lily_pad": "#3f7a2f",

@@ -27,54 +27,45 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Pale reef-rock crust down to the plain rock core. Coral itself is handled
-# separately (as a post-process over sparse branch columns), not part of
-# the bulk gradient.
+# Pale reef-rock crust down to the plain rock core - solid, no dither, so
+# the shelf reads as plain eroded rock and the coral (below) is what carries
+# all the color.
 GRADIENT = [
     "minecraft:sand",
     "minecraft:sandstone",
-    "minecraft:calcite",
-    "minecraft:clay",
-    "minecraft:stone",
 ]
 
-CORAL_BLOCKS = [
+# Two accent colors per island (chosen once in generate_island, not per
+# voxel) so each colony reads as one solid coral color, not confetti.
+CORAL_COLOR_CHOICES = [
     "minecraft:tube_coral_block",
     "minecraft:brain_coral_block",
-    "minecraft:bubble_coral_block",
     "minecraft:fire_coral_block",
     "minecraft:horn_coral_block",
 ]
 
-FLECK_CHANCE = 0.02  # rare clay fleck at any depth, for banding variety
 BRANCH_THRESHOLD = 0.45  # clumping-noise cutoff for where coral colonies grow
 STUB_FRAC = 0.22  # how shallow the eroded (non-branch) columns become
 
 
 def pick_gradient(rng, t, jitter=0.0):
     """Picks a block for depth-fraction t in [0, 1] (0 = right at the sand
-    crust, 1 = deepest rock). `jitter` blends toward a neighboring shade for
-    per-column/per-voxel randomness so the strata read as banded, not a
-    perfectly smooth gradient."""
+    crust, 1 = deepest rock). `jitter` (driven only by smooth per-column
+    noise) nudges the whole column toward a neighboring shade so the band
+    edge is wavy instead of a razor-straight ring, without per-voxel
+    dithering."""
     n = len(GRADIENT)
     pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    pos = min(max(pos, 0.0), n - 1)
-    lo = int(math.floor(pos))
-    hi = min(lo + 1, n - 1)
-    frac = pos - lo
-    block = GRADIENT[hi] if rng.random() < frac else GRADIENT[lo]
-    if rng.random() < FLECK_CHANCE:
-        block = "minecraft:clay"
-    return block
+    idx = int(round(min(max(pos, 0.0), n - 1)))
+    return GRADIENT[idx]
 
 
 def pick_reef_crust(rng):
-    """Top-crust / shallow-band block: sand with a rare coral head already
-    poking through the sea floor."""
-    return "minecraft:tube_coral_block" if rng.random() < 0.04 else "minecraft:sand"
+    """Top-crust block: solid sand, no fleck - the crust is a flat platform."""
+    return "minecraft:sand"
 
 
-def _reef_branches(blocks, col_bottom, columns, rng, size, half, seed, max_depth):
+def _reef_branches(blocks, col_bottom, columns, size, half, seed, max_depth, coral_colors):
     """Post-processes the already-carved (unmodified common.carve_columns)
     underside so it reads as a reef shelf with sparse coral colonies growing
     off it, instead of a solid tapering mass: a clumped noise field marks a
@@ -82,7 +73,11 @@ def _reef_branches(blocks, col_bottom, columns, rng, size, half, seed, max_depth
     depth (recolored as vivid coral), while every other column - the eroded
     reef rock - is hard-capped to a shallow stub. The clumping (rather than
     an independent per-column chance) is what makes the coral read as
-    colonies growing in patches, not salt-and-pepper speckle.
+    colonies growing in patches, not salt-and-pepper speckle. Each branch
+    column is filled with ONE solid color from `coral_colors` (chosen from
+    the same coherent noise field, not re-rolled per voxel), and
+    `coral_colors` itself is only 2 colors picked once for the whole island -
+    so a colony reads as a single-color coral head, not a rainbow of static.
 
     Like desert.py's mesa terracing, this only ever *removes* already-carved
     blocks (branch columns are recolored, never extended) and keeps
@@ -92,15 +87,17 @@ def _reef_branches(blocks, col_bottom, columns, rng, size, half, seed, max_depth
     """
     clump_noise = common.value_noise_2d(size, max(3, size // 12), seed + 51)
     stub_depth = max(3, int(max_depth * STUB_FRAC))
+    color_split = (BRANCH_THRESHOLD + 1.0) / 2
     new_columns = []
     for (x, z, topY, depth, r, localR) in columns:
-        is_branch = clump_noise[x + half, z + half] > BRANCH_THRESHOLD
+        noise_val = clump_noise[x + half, z + half]
+        is_branch = noise_val > BRANCH_THRESHOLD
         if is_branch or depth <= stub_depth:
             if is_branch:
                 bottomY, _, _, _ = col_bottom[(x, z)]
+                color = coral_colors[0] if noise_val > color_split else coral_colors[1]
                 for y in range(bottomY, topY):
-                    if rng.random() < 0.8:
-                        blocks[(x, y, z)] = rng.choice(CORAL_BLOCKS)
+                    blocks[(x, y, z)] = color
             new_columns.append((x, z, topY, depth, r, localR))
             continue
         bottomY, _, _, _ = col_bottom[(x, z)]
@@ -145,30 +142,30 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
             return pick_reef_crust(rng)
         g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        return pick_gradient(rng, t_grad, jitter=g_jitter + rng.uniform(-0.9, 0.9))
+        return pick_gradient(rng, t_grad, jitter=g_jitter)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
     )
     # erode most of the underside to a shelf, leaving sparse coral colonies
-    # branching down further - see _reef_branches above.
-    _reef_branches(blocks, col_bottom, columns, rng, size, half, seed, max_depth)
+    # branching down further - see _reef_branches above. Two accent colors
+    # for the whole island, picked once (not per voxel/column).
+    coral_colors = rng.sample(CORAL_COLOR_CHOICES, 2)
+    _reef_branches(blocks, col_bottom, columns, size, half, seed, max_depth, coral_colors)
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):
-            if is_tip:
-                return rng.choice(CORAL_BLOCKS)
-            return "minecraft:tube_coral_block" if rng.random() < 0.4 else "minecraft:sandstone"
+            return coral_colors[0] if is_tip else "minecraft:sandstone"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
 
-        # kelp/sea-pickle fringe draped from the rim (replaces the other
-        # themes' vines/icicles/roots)
+        # kelp fringe draped from the rim (replaces the other themes'
+        # vines/icicles/roots)
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:sea_pickle" if rng.random() < 0.3 else "minecraft:kelp",
-            r_frac_threshold=0.5, chance=0.3, length_range=(2, 6),
+            rim_block_fn=lambda rng: "minecraft:kelp",
+            r_frac_threshold=0.55, chance=0.12, length_range=(2, 4),
         )
 
     if decorate_top:
@@ -202,12 +199,8 @@ def generate_scene(seed=0):
 BLOCK_COLORS = {
     "minecraft:sand": "#e3d2a0",
     "minecraft:sandstone": "#d8c98a",
-    "minecraft:calcite": "#e8e4d0",
-    "minecraft:clay": "#9aa3ad",
-    "minecraft:stone": "#8a8a8a",
     "minecraft:tube_coral_block": "#2e6fd6",
     "minecraft:brain_coral_block": "#d15fa0",
-    "minecraft:bubble_coral_block": "#a83fd1",
     "minecraft:fire_coral_block": "#d1372e",
     "minecraft:horn_coral_block": "#d1c62e",
     "minecraft:kelp": "#3f7a3f",

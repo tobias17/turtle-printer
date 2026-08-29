@@ -2,12 +2,13 @@
 Frozen Floating Island Generator for Minecraft
 ===============================================
 
-A frozen/tundra island variant: a snow crust on top, grading down through
-packed ice and blue ice, then into the plain rock core every island theme
-shares underneath (stone/andesite) - like a chunk of frozen tundra torn
-free of the ground, ice near the surface, bare rock deeper down. The
-underside grows actual icicles (ice/packed ice, blue ice tips) rather than
-the rocky root-drips the other themes use.
+A frozen/tundra island variant: a solid snow crust on top, grading down
+through packed ice into plain stone at the core - like a chunk of frozen
+tundra torn free of the ground, ice near the surface, bare rock deeper
+down. Blue ice is reserved for the hanging icicles (packed-ice shafts with
+blue-ice tips) so it reads as an accent, not bulk noise. The underside
+shatters into alternating tall/short wedges (see _fracture_columns) instead
+of a smooth cone - a calved glacier chunk, not an iceberg cone.
 
 Shares its silhouette/taper/drip machinery with the other island themes in
 generate/islands/ (see common.py) - this file only supplies the frozen-
@@ -28,38 +29,29 @@ import common
 
 # Icy crust down to a bare rock core - deliberately doesn't stay ice all the
 # way down, so the underside reads as "frozen chunk of ground", not a solid
-# iceberg.
+# iceberg. Kept to 3 solid bands (no fleck/dither); blue ice is reserved for
+# the icicle drips/tips so it reads as an accent, not bulk noise.
 GRADIENT = [
     "minecraft:snow_block",
     "minecraft:packed_ice",
-    "minecraft:blue_ice",
     "minecraft:stone",
-    "minecraft:andesite",
 ]
-
-SPARKLE_CHANCE = 0.02  # rare blue-ice fleck at any depth, for a bit of glint
 
 
 def pick_gradient(rng, t, jitter=0.0):
     """Picks a block for depth-fraction t in [0, 1] (0 = right at the snow
-    crust, 1 = deepest rock). `jitter` blends toward a neighboring shade for
-    per-column/per-voxel randomness instead of a perfectly smooth band."""
+    crust, 1 = deepest rock). `jitter` (driven only by smooth per-column
+    noise) nudges the whole column toward a neighboring shade so band edges
+    are wavy instead of a razor-straight ring, without per-voxel dithering."""
     n = len(GRADIENT)
     pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    pos = min(max(pos, 0.0), n - 1)
-    lo = int(math.floor(pos))
-    hi = min(lo + 1, n - 1)
-    frac = pos - lo
-    block = GRADIENT[hi] if rng.random() < frac else GRADIENT[lo]
-    if rng.random() < SPARKLE_CHANCE:
-        block = "minecraft:blue_ice"
-    return block
+    idx = int(round(min(max(pos, 0.0), n - 1)))
+    return GRADIENT[idx]
 
 
 def pick_snow_crust(rng):
-    """Top-crust / shallow-band block: snow with a rare packed-ice fleck
-    breaking through."""
-    return "minecraft:packed_ice" if rng.random() < 0.05 else "minecraft:snow_block"
+    """Top-crust block: solid snow, no fleck - the crust is a flat platform."""
+    return "minecraft:snow_block"
 
 
 N_FRACTURE_SECTORS = 6  # alternating tall/short wedges around the full circle
@@ -138,16 +130,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     gradient_noise = common.value_noise_2d(size, grid_for(4, 8), seed + 9) * 1.8
     speckle_noise = common.value_noise_2d(size, grid_for(2, 12), seed + 13) * 1.1
 
-    # a coarse noise field whose zero-crossings trace thin, web-like lines
-    # across the top - read as frost cracks in the ice sheet breaking
-    # through the snow, instead of the same random single-block fleck every
-    # other theme uses for its crust.
-    crack_noise = common.value_noise_2d(size, grid_for(3, 6), seed + 21)
-    CRACK_THRESHOLD = 0.05
-
     def top_block(rng, x, z, xi, zi):
-        if abs(crack_noise[xi, zi]) < CRACK_THRESHOLD:
-            return "minecraft:blue_ice" if rng.random() < 0.6 else "minecraft:packed_ice"
         return pick_snow_crust(rng)
 
     def body_block(rng, x, z, xi, zi, y_offset, thickness, total_depth):
@@ -155,7 +138,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
             return pick_snow_crust(rng)
         g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        return pick_gradient(rng, t_grad, jitter=g_jitter + rng.uniform(-0.9, 0.9))
+        return pick_gradient(rng, t_grad, jitter=g_jitter)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -173,9 +156,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # gradient the island's body ends in - they read as ice growing off
         # the frozen underside, not more of the core rock.
         def drip_block(rng, t, is_tip):
-            if is_tip:
-                return "minecraft:blue_ice"
-            return "minecraft:ice" if rng.random() < 0.35 else "minecraft:packed_ice"
+            return "minecraft:blue_ice" if is_tip else "minecraft:packed_ice"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
@@ -183,7 +164,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # short bare icicle shards near the outer rim
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:ice" if rng.random() < 0.7 else "minecraft:packed_ice",
+            rim_block_fn=lambda rng: "minecraft:packed_ice",
             r_frac_threshold=0.55, chance=0.15, length_range=(1, 4),
         )
 
@@ -227,9 +208,7 @@ BLOCK_COLORS = {
     "minecraft:snow": "#ffffff",
     "minecraft:packed_ice": "#a8d2e8",
     "minecraft:blue_ice": "#74b9e0",
-    "minecraft:ice": "#9fd0e8",
     "minecraft:stone": "#8a8a8a",
-    "minecraft:andesite": "#a3a3a0",
     "minecraft:spruce_log": "#3b2a1a",
     "minecraft:spruce_leaves": "#3a5a45",
 }
