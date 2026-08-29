@@ -10,13 +10,22 @@ fit inside it and centered on the same sky-blue background the 3D renderer
 itself uses, so different islands' actual sizes/aspect ratios don't distort
 the grid.
 
-Usage:
-    python rollup.py                              # all themes, d=40/80/120
-    python rollup.py --diameters 40,80
-    python rollup.py --themes grass,crystal,desert
-    python rollup.py --decorate-top                # include top decorations
-    python rollup.py --cell-size 300
-    python rollup.py --out generate/out/renders/rollup.png
+THE canonical rollup - the one every agent/human should look at, and the
+only file this script ever touches when run with no arguments - always
+lives at CANONICAL_OUT (see below) and always covers every theme in
+THEME_NAMES at DEFAULT_DIAMETERS. That path and that grid shape are the
+single source of truth: don't repurpose them for a one-off/partial render.
+
+    python rollup.py            # regenerates the canonical rollup, always
+                                 # at the same path, always the full grid
+
+To inspect a subset (fewer themes/diameters, a different cell size, or
+decorations on) for iteration, you MUST pass --out to point at a different
+file - the script refuses to run otherwise, specifically so a partial or
+non-standard render can never silently overwrite the canonical one:
+
+    python rollup.py --themes crystal,desert --out generate/out/renders/_debug.png
+    python rollup.py --diameters 40 --decorate-top --out generate/out/renders/_debug.png
 """
 
 import argparse
@@ -27,10 +36,17 @@ from PIL import Image, ImageDraw, ImageFont
 
 import common
 
+# The one standard rollup file. Every agent/human looking for "the" rollup
+# should look here, and this path should never point at anything other than
+# the full, default-config grid - see the refusal logic in main().
+CANONICAL_OUT = "generate/out/renders/rollup.png"
+
 THEME_NAMES = [
     "grass", "volcano", "snow", "crystal", "desert", "mushroom",
-    "coral", "ruins", "swamp", "prismarine", "cherry",
+    "coral", "ruins", "swamp", "prismarine",
 ]
+DEFAULT_DIAMETERS = "40,80,120"
+DEFAULT_CELL_SIZE = 360
 
 BG_COLOR = (0xbf, 0xe3, 0xff)  # matches generate/utils.py's BG_COLOR
 LABEL_COLOR = (26, 26, 26)
@@ -59,9 +75,9 @@ def _fit_into_square(img, size):
     return canvas
 
 
-def build_rollup(theme_names, diameters, seed=1, cell_size=360,
+def build_rollup(theme_names, diameters, seed=1, cell_size=DEFAULT_CELL_SIZE,
                   decorate_top=False, decorate_underside=True,
-                  out_path="generate/out/renders/rollup.png"):
+                  out_path=CANONICAL_OUT):
     modules = [(name, importlib.import_module(name)) for name in theme_names]
 
     col_header_h = 50
@@ -87,7 +103,7 @@ def build_rollup(theme_names, diameters, seed=1, cell_size=360,
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         draw.text((10, y0 + (cell_size - th) / 2), label, fill=LABEL_COLOR, font=font)
 
-    tmp_path = Path("generate/out/renders/_rollup_tmp.png")
+    tmp_path = Path("generate/out/renders/_rollup_cell_tmp.png")
     for ci, (name, mod) in enumerate(modules):
         for ri, diameter in enumerate(diameters):
             max_depth = max(6, diameter // 2)
@@ -113,19 +129,42 @@ def build_rollup(theme_names, diameters, seed=1, cell_size=360,
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Render every island theme at several diameters into one grid image.")
+        description="Render every island theme at several diameters into one grid image. "
+                     "With no arguments, regenerates THE canonical rollup at "
+                     f"{CANONICAL_OUT} - see the module docstring before passing any flags.")
     ap.add_argument("--themes", type=str, default=None,
                      help="comma-separated theme names (default: all)")
-    ap.add_argument("--diameters", type=str, default="40,80,120",
-                     help="comma-separated diameters (default: 40,80,120)")
+    ap.add_argument("--diameters", type=str, default=DEFAULT_DIAMETERS,
+                     help=f"comma-separated diameters (default: {DEFAULT_DIAMETERS})")
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--cell-size", type=int, default=360, help="pixel size of each square grid cell")
+    ap.add_argument("--cell-size", type=int, default=DEFAULT_CELL_SIZE,
+                     help="pixel size of each square grid cell")
     ap.add_argument("--decorate-top", action="store_true",
                      help="include top decorations (trees, flowers, etc)")
     ap.add_argument("--no-underside-decor", action="store_true",
                      help="disable drips/decoration on the underside")
-    ap.add_argument("--out", type=str, default="generate/out/renders/rollup.png")
+    ap.add_argument("--out", type=str, default=None,
+                     help="output path. Required if any of --themes/--diameters/--cell-size/"
+                          "--decorate-top/--no-underside-decor differ from their defaults - "
+                          f"otherwise this would overwrite the canonical rollup at {CANONICAL_OUT}")
     args = ap.parse_args()
+
+    is_default_config = (
+        args.themes is None and args.diameters == DEFAULT_DIAMETERS
+        and args.cell_size == DEFAULT_CELL_SIZE and not args.decorate_top
+        and not args.no_underside_decor
+    )
+    if args.out is None:
+        if not is_default_config:
+            ap.error(
+                "--out is required when overriding --themes/--diameters/--cell-size/"
+                "--decorate-top/--no-underside-decor, so a partial/non-standard render can "
+                f"never silently overwrite the canonical rollup at {CANONICAL_OUT}. "
+                "Point --out at a scratch file instead, e.g. generate/out/renders/_debug.png"
+            )
+        out_path = CANONICAL_OUT
+    else:
+        out_path = args.out
 
     theme_names = [t.strip() for t in args.themes.split(",")] if args.themes else THEME_NAMES
     diameters = [int(d) for d in args.diameters.split(",")]
@@ -133,7 +172,7 @@ def main():
     build_rollup(
         theme_names, diameters, seed=args.seed, cell_size=args.cell_size,
         decorate_top=args.decorate_top, decorate_underside=not args.no_underside_decor,
-        out_path=args.out,
+        out_path=out_path,
     )
 
 

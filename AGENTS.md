@@ -123,6 +123,74 @@ maturity:
   per-view manual framing as the fix for this — cropping after the fact is
   simpler and handles every view angle uniformly.
 
+## Island theme design requirements
+
+Every file in `generate/islands/` besides `common.py` and `rollup.py` (e.g.
+`grass.py`, `volcano.py`, `crystal.py`, ...) is one biome "theme" built on
+the shared carve/drip machinery in `common.py`. A theme was rejected once
+already for breaking rule 1 (`cherry.py`'s first version reshaped the top
+into a stepped ziggurat) - these rules are the concrete, checkable bar a
+theme must clear, written down so that doesn't happen again:
+
+1. **The top is ALWAYS perfectly flat and a single solid color.** Every
+   column's top surface is the same Y level (`flat_top=True`) and the same
+   one hardcoded block - no per-voxel/per-column randomness, no rare
+   "fleck" swapped in at low probability, no exceptions carved into the top
+   for any reason. If a theme's whole premise is reshaping the top surface
+   (terraces, spikes, a hole), that premise is disqualified outright - move
+   the theme's distinguishing shape onto the underside instead. This is the
+   one rule with zero exceptions.
+2. **The underside must be shaped around one concrete, nameable thing that
+   fits the theme - not texture noise.** Pick ONE structural idea and
+   implement it as a deliberate post-process over `columns`: flatten most
+   columns to a shared shallow depth, exempt a specific set chosen by an
+   explicit rule (a radius band, angular symmetry, distance from center,
+   clumped noise, alternating wedges), and recolor/extend only that
+   exempted set. Existing examples: crystal.py's geode floor + spikes,
+   desert.py's mesa terraces, mushroom.py's cap + stem, coral.py's branching
+   colonies, ruins.py's broken pillars, swamp.py's rim root trunks,
+   prismarine.py's symmetric guard towers, snow.py's calved wedges. A
+   smooth per-column depth blend, or a pile of independent per-voxel color
+   choices, reads as texture, not shape, and does not satisfy this rule
+   even if it's colorful.
+3. **Keep the palette minimal and every band solid.** 2-3 blocks for the
+   bulk crust/gradient list, chosen by rounding to the nearest band index
+   (`idx = round(pos)`, not a probabilistic blend) so each band is one flat
+   color - plus a small number of accent blocks reserved exclusively for the
+   structural feature and optional decoration. No "fleck chance" that
+   swaps in a random block at low probability anywhere in the bulk
+   material. Any smooth-noise `jitter` passed into the gradient picker must
+   come from a per-column field (`value_noise_2d`, indexed by `[xi, zi]`
+   only) - never redraw it per-voxel (e.g. never add a fresh
+   `rng.uniform(...)` inside `body_block_fn`, and never recolor a branch/
+   vein/trunk with an independent random pick per voxel along its length)
+   - that's what turns clean bands and clean structural features into
+   static.
+4. **Don't touch `common.py` or any other theme file** when adding or
+   fixing a theme. Add new local functions/parameters within the theme's
+   own file; if the shared carve/drip loop genuinely needs a new
+   capability, extend `common.py` in a way that defaults to a no-op for
+   every existing theme (a new optional parameter, not a behavior change).
+5. **Verify by rendering, not by reading the code.** After writing or
+   editing a theme, run `generate/islands/rollup.py` with **no arguments**
+   - it regenerates THE canonical rollup (every theme at every standard
+     diameter, one consolidated grid image, columns = theme, rows =
+     diameter) always at the same fixed path,
+     `generate/out/renders/rollup.png`, so a regression in one theme, or in
+     an unrelated theme you didn't mean to touch, is visible immediately.
+     That path and that grid shape are the single source of truth for "the
+     rollup" - the script itself refuses to run a partial/non-standard
+     render (fewer themes, different diameters, decorations on, ...)
+     without an explicit `--out` pointed at a different file, specifically
+     so a one-off debugging render can never silently overwrite the
+     canonical one. Don't work around that guard - if you need `--out`,
+     you're already making a scratch render, not the rollup.
+   Confirm from the render: (a) the top is one solid color at every
+   diameter, (b) the underside reads as the intended shape, not noise, and
+   (c) check programmatically that every column's Y-values form one
+   contiguous run (no gaps) - a gap can be invisible from outside the
+   rendered mesh.
+
 ## Environment
 
 - Python deps are in `requirements.txt` (numpy, scipy, matplotlib, Pillow
