@@ -43,7 +43,7 @@ CANONICAL_OUT = "generate/out/renders/rollup.png"
 
 THEME_NAMES = [
     "grass", "volcano", "snow", "crystal", "desert", "mushroom",
-    "coral", "ruins", "swamp", "prismarine",
+    "coral", "ruins", "swamp", "prismarine", "hive", "bones",
 ]
 DEFAULT_DIAMETERS = "40,80,120"
 DEFAULT_CELL_SIZE = 360
