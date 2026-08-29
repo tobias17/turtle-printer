@@ -88,6 +88,14 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     gradient_noise = common.value_noise_2d(size, grid_for(4, 8), seed + 9) * 1.8
     speckle_noise = common.value_noise_2d(size, grid_for(2, 12), seed + 13) * 1.1
 
+    # a coarse per-column phase field so each column's veins snake through
+    # depth on their own wavy schedule rather than forming perfect rings -
+    # combined with a sine of y_offset, this traces actual vein bands of
+    # crystal running through the bulk rock instead of independent random
+    # single-voxel flecks, which is what made the geode read as "painted".
+    vein_phase_noise = common.value_noise_2d(size, grid_for(3, 7), seed + 17)
+    VEIN_THRESHOLD = 0.8
+
     def top_block(rng, x, z, xi, zi):
         return pick_calcite_crust(rng)
 
@@ -96,6 +104,13 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
             return pick_calcite_crust(rng)
         g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
+        vein_phase = math.sin(y_offset * 0.8 + vein_phase_noise[xi, zi] * 6.0)
+        if vein_phase > VEIN_THRESHOLD:
+            return common.weighted_choice(rng, [
+                ("minecraft:amethyst_block", 0.65),
+                ("minecraft:amethyst_cluster", 0.2),
+                ("minecraft:budding_amethyst", 0.15),
+            ])
         return pick_gradient(rng, t_grad, jitter=g_jitter + rng.uniform(-0.9, 0.9))
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(

@@ -60,7 +60,7 @@ def pick_mycelium_crust(rng):
 
 
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
-                     num_drips=None, drip_density=0.05, flat_top=True, decorate_top=False,
+                     num_drips=None, drip_density=0.11, flat_top=True, decorate_top=False,
                      decorate_underside=True, offset=(0, 0, 0)):
     """Returns dict {(x, y, z): "minecraft:block_id"} for one fungal
     island, positioned with its center at `offset`.
@@ -95,8 +95,20 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
         return pick_gradient(rng, t_grad, jitter=g_jitter + rng.uniform(-0.9, 0.9))
 
+    def bottom_face(rng, blocks, x, z, bottomY, r, localR):
+        # damp mycelium/podzol patches breaking through the bare rock on the
+        # very underside, as if the fungal crust is spreading down through
+        # cracks rather than staying a purely cosmetic top layer.
+        if r / localR > 0.55 and rng.random() < 0.3:
+            blocks[(x, bottomY, z)] = "minecraft:podzol" if rng.random() < 0.4 else "minecraft:mycelium"
+
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
+        bottom_face_fn=bottom_face,
+        # a cap-like taper: stays close to full width just under the rim
+        # (like a mushroom cap's flesh) then narrows quickly further down -
+        # both existing carve_columns parameters, no shared code touched.
+        taper_strength=0.9, taper_exponent=1.6,
     )
 
     if decorate_underside:
@@ -110,11 +122,12 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
 
-        # vines/glow lichen draped down from the underside near the rim
+        # a denser curtain of vines/glow lichen than the other themes - a
+        # swamp canopy's hanging roots and moss are thick, not sparse.
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
             rim_block_fn=lambda rng: "minecraft:glow_lichen" if rng.random() < 0.25 else "minecraft:vine",
-            r_frac_threshold=0.55, chance=0.18, length_range=(2, 6),
+            r_frac_threshold=0.45, chance=0.32, length_range=(3, 8),
         )
 
     if decorate_top:

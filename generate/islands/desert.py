@@ -36,6 +36,35 @@ GRADIENT = [
 ]
 
 FLECK_CHANCE = 0.02  # rare red-sandstone fleck at any depth, for banding variety
+BAND_SIZE = 3  # depth (in blocks) of one mesa shelf, for the terracing below
+
+
+def _terrace_columns(blocks, col_bottom, columns, band_size):
+    """Post-processes an already-carved island (from the ordinary, unmodified
+    common.carve_columns) so each column's underside depth snaps down to the
+    nearest multiple of `band_size`, instead of the smooth continuous taper
+    every other theme uses. This only ever *removes* already-carved blocks
+    (never invents new ones) and keeps col_bottom/columns in sync, so drips
+    and rim decoration - which read those to find each column's true bottom -
+    still attach cleanly to the new, shallower surface.
+
+    Deliberately local to desert.py rather than a carve_columns option: this
+    is the one theme that wants a genuinely different taper *shape* (stacked
+    badlands shelves instead of a cone), and keeping the change here means
+    the shared carve loop every other theme depends on is never touched.
+    """
+    new_columns = []
+    for (x, z, topY, depth, r, localR) in columns:
+        bottomY, _, _, _ = col_bottom[(x, z)]
+        new_depth = band_size * (depth // band_size)
+        if new_depth == 0:
+            new_depth = depth  # already thinner than one shelf - leave it
+        new_bottomY = topY - new_depth
+        for y in range(bottomY, new_bottomY):
+            blocks.pop((x, y, z), None)
+        col_bottom[(x, z)] = (new_bottomY, topY, r, localR)
+        new_columns.append((x, z, topY, new_depth, r, localR))
+    columns[:] = new_columns
 
 
 def pick_gradient(rng, t, jitter=0.0):
@@ -93,11 +122,20 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
             return pick_sand_crust(rng)
         g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        return pick_gradient(rng, t_grad, jitter=g_jitter + rng.uniform(-0.9, 0.9))
+        # quantize into the same shelves the silhouette gets stepped into
+        # below, so each terrace reads as one solid stratum (with the usual
+        # per-voxel jitter for texture) instead of a smooth color blend -
+        # that's what actually makes it look like badlands strata.
+        depth_bands = max(1, (thickness - 1 + max_depth) // BAND_SIZE)
+        band_t = math.floor(min(max(t_grad, 0.0), 0.999999) * depth_bands) / depth_bands
+        return pick_gradient(rng, band_t, jitter=g_jitter + rng.uniform(-0.5, 0.5))
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
     )
+    # step the smooth taper this just produced down into discrete mesa
+    # shelves - see _terrace_columns above.
+    _terrace_columns(blocks, col_bottom, columns, BAND_SIZE)
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):

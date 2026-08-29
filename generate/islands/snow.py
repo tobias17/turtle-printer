@@ -87,7 +87,16 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     gradient_noise = common.value_noise_2d(size, grid_for(4, 8), seed + 9) * 1.8
     speckle_noise = common.value_noise_2d(size, grid_for(2, 12), seed + 13) * 1.1
 
+    # a coarse noise field whose zero-crossings trace thin, web-like lines
+    # across the top - read as frost cracks in the ice sheet breaking
+    # through the snow, instead of the same random single-block fleck every
+    # other theme uses for its crust.
+    crack_noise = common.value_noise_2d(size, grid_for(3, 6), seed + 21)
+    CRACK_THRESHOLD = 0.05
+
     def top_block(rng, x, z, xi, zi):
+        if abs(crack_noise[xi, zi]) < CRACK_THRESHOLD:
+            return "minecraft:blue_ice" if rng.random() < 0.6 else "minecraft:packed_ice"
         return pick_snow_crust(rng)
 
     def body_block(rng, x, z, xi, zi, y_offset, thickness, total_depth):
@@ -99,6 +108,10 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
+        # a steeper, more concave taper than the other themes' (these are
+        # both existing carve_columns parameters - no shared code touched) -
+        # glacial undersides are sharply undercut, not a gentle dome.
+        taper_strength=0.95, taper_exponent=0.5,
     )
 
     if decorate_underside:
