@@ -7,8 +7,11 @@ grass/dirt/stone. The top crust is solid black (blackstone, with rare
 obsidian flecks), then color gradually shifts to a darker grey with depth
 - basalt, deepslate, cobbled deepslate, tuff - as you move down toward the
 underside, with per-column/per-voxel noise so the banding isn't a
-perfectly smooth gradient. No lava/magma - pure stone-color grading, kept
-dark top to bottom (no light greys or white stone).
+perfectly smooth gradient. Mostly pure stone-color grading, kept dark top
+to bottom (no light greys or white stone), but with sparse glowing magma
+veins running through the body and a slightly sharper underside taper than
+grass.py's - a rocky mass still cooling from underneath, not just a
+recolored copy of the same shape.
 Meant to sit around spire.py's dark tower.
 
 Shares its silhouette/taper/drip machinery with the other island themes
@@ -105,6 +108,13 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     gradient_noise = common.value_noise_2d(size, grid_for(4, 8), seed + 9) * 1.8
     speckle_noise = common.value_noise_2d(size, grid_for(2, 12), seed + 13) * 1.1
 
+    # a per-column vein-phase field, same trick as crystal.py's amethyst
+    # veins: combined with a sine of y_offset it traces wavy seams of magma
+    # through the bulk rock (a still-cooling volcano) instead of independent
+    # single-voxel flecks.
+    lava_vein_noise = common.value_noise_2d(size, grid_for(3, 7), seed + 23)
+    LAVA_VEIN_THRESHOLD = 0.93
+
     def top_block(rng, x, z, xi, zi):
         return pick_black(rng)
 
@@ -113,10 +123,18 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
             return pick_black(rng)
         g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
+        vein_phase = math.sin(y_offset * 0.6 + lava_vein_noise[xi, zi] * 5.0)
+        if vein_phase > LAVA_VEIN_THRESHOLD:
+            return "minecraft:magma_block"
         return pick_gradient(rng, t_grad, jitter=g_jitter + rng.uniform(-0.9, 0.9))
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
+        # a bit sharper/more concave than grass.py's default taper (both
+        # pre-existing carve_columns parameters, no shared code touched) -
+        # reads as a rockier, more pointed mass instead of the same rounded
+        # dome shape.
+        taper_strength=0.9, taper_exponent=0.5,
     )
 
     if decorate_underside:
@@ -166,6 +184,7 @@ BLOCK_COLORS = {
     "minecraft:polished_basalt": "#5a5760",
     "minecraft:cobbled_deepslate": "#55565a",
     "minecraft:tuff": "#6a6b64",
+    "minecraft:magma_block": "#c9591a",
 }
 
 

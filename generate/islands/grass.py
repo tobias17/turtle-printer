@@ -94,6 +94,11 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top,
         top_block, body_block, bottom_face_fn=bottom_face,
+        # a touch gentler/rounder than volcano.py's sharper, more concave
+        # taper (both pre-existing carve_columns parameters, no shared code
+        # touched) - reads as a softer earthy mound instead of the same
+        # pointed rocky mass.
+        taper_strength=0.8, taper_exponent=0.75,
     )
 
     if decorate_underside:
