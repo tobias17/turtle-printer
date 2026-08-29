@@ -36,7 +36,7 @@ GRADIENT = [
 ]
 
 FLECK_CHANCE = 0.02  # rare red-sandstone fleck at any depth, for banding variety
-BAND_SIZE = 3  # depth (in blocks) of one mesa shelf, for the terracing below
+NUM_TERRACES = 5  # how many mesa shelves the underside steps through, regardless of size
 
 
 def _terrace_columns(blocks, col_bottom, columns, band_size):
@@ -114,6 +114,11 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     gradient_noise = common.value_noise_2d(size, grid_for(4, 8), seed + 9) * 1.8
     speckle_noise = common.value_noise_2d(size, grid_for(2, 12), seed + 13) * 1.1
 
+    # a handful of big shelves regardless of island size, so the terracing
+    # always reads as a few bold mesa steps rather than many thin bands that
+    # blur back into a smooth cone at larger diameters.
+    band_size = max(2, max_depth // NUM_TERRACES)
+
     def top_block(rng, x, z, xi, zi):
         return pick_sand_crust(rng)
 
@@ -126,7 +131,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # below, so each terrace reads as one solid stratum (with the usual
         # per-voxel jitter for texture) instead of a smooth color blend -
         # that's what actually makes it look like badlands strata.
-        depth_bands = max(1, (thickness - 1 + max_depth) // BAND_SIZE)
+        depth_bands = max(1, (thickness - 1 + max_depth) // band_size)
         band_t = math.floor(min(max(t_grad, 0.0), 0.999999) * depth_bands) / depth_bands
         return pick_gradient(rng, band_t, jitter=g_jitter + rng.uniform(-0.5, 0.5))
 
@@ -135,7 +140,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     )
     # step the smooth taper this just produced down into discrete mesa
     # shelves - see _terrace_columns above.
-    _terrace_columns(blocks, col_bottom, columns, BAND_SIZE)
+    _terrace_columns(blocks, col_bottom, columns, band_size)
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):

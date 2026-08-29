@@ -62,6 +62,57 @@ def pick_snow_crust(rng):
     return "minecraft:packed_ice" if rng.random() < 0.05 else "minecraft:snow_block"
 
 
+N_FRACTURE_SECTORS = 6  # alternating tall/short wedges around the full circle
+
+
+def _fracture_columns(blocks, col_bottom, columns, rng, size, half, seed, max_depth):
+    """Post-processes the already-carved (unmodified common.carve_columns)
+    underside so it reads as a shattered, crown-like glacier chunk instead of
+    a symmetric cone: going around the circle, alternating wedges either keep
+    their full natural depth (a surviving icy point) or get hard-capped to a
+    shallow floor depth (a calved-off notch), with a coarse noise field
+    jagging each wedge boundary so it isn't a perfectly straight cut.
+
+    Two earlier versions failed for different reasons: a smooth per-column
+    depth blend just reads as texture, not a different *shape* - nothing
+    anchors the eye to "this is a break." A single hard angular half/half
+    split (full depth vs. a hard shallow cap, the same trick crystal.py's
+    geode floor uses) *did* register as a structural change in the raw data,
+    but from a single fixed camera angle the tall surviving half can simply
+    face the camera and hide the calved half entirely, so the render still
+    looked like a plain cone by chance of orientation. Several alternating
+    wedges around the full circle fixes that: any viewing angle sees a mix
+    of tall points and short notches, so the fracture reads regardless of
+    which way the island happens to be facing.
+
+    Like desert.py's mesa terracing, this only ever *removes* already-carved
+    blocks and keeps col_bottom/columns in sync (drips/rim decoration read
+    those for each column's true bottom), and is deliberately local to
+    snow.py rather than a carve_columns option, so no other theme is
+    affected.
+    """
+    phase = rng.uniform(0, 2 * math.pi)
+    floor_depth = max(4, int(max_depth * 0.3))
+    crack_noise = common.value_noise_2d(size, 4, seed + 41)
+    sector_width = 2 * math.pi / N_FRACTURE_SECTORS
+    new_columns = []
+    for (x, z, topY, depth, r, localR) in columns:
+        theta = math.atan2(z, x)
+        jag = crack_noise[x + half, z + half] * sector_width * 0.4
+        sector = int(((theta - phase + jag) % (2 * math.pi)) / sector_width)
+        tall = sector % 2 == 0
+        if tall or depth <= floor_depth:
+            new_columns.append((x, z, topY, depth, r, localR))
+            continue
+        bottomY, _, _, _ = col_bottom[(x, z)]
+        new_bottomY = topY - floor_depth
+        for y in range(bottomY, new_bottomY):
+            blocks.pop((x, y, z), None)
+        col_bottom[(x, z)] = (new_bottomY, topY, r, localR)
+        new_columns.append((x, z, topY, floor_depth, r, localR))
+    columns[:] = new_columns
+
+
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
                      num_drips=None, drip_density=0.05, flat_top=True, decorate_top=False,
                      decorate_underside=True, offset=(0, 0, 0)):
@@ -113,6 +164,9 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # glacial undersides are sharply undercut, not a gentle dome.
         taper_strength=0.95, taper_exponent=0.5,
     )
+    # shatter the smooth taper into a calved, asymmetric iceberg shape - see
+    # _fracture_columns above.
+    _fracture_columns(blocks, col_bottom, columns, rng, size, half, seed, max_depth)
 
     if decorate_underside:
         # icicles are their own small ice palette, distinct from the rocky

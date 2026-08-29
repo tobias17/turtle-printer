@@ -62,6 +62,59 @@ def pick_calcite_crust(rng):
     return "minecraft:amethyst_block" if rng.random() < 0.03 else "minecraft:calcite"
 
 
+SPIKE_RADIUS_FRAC = 0.3  # spikes only ever spawn this close to center
+
+
+def _carve_geode_cavity(blocks, col_bottom, columns, rng, max_depth):
+    """Post-processes the already-carved (unmodified common.carve_columns)
+    underside so the island reads as a broken-open geode - a wide, mostly
+    flat crystal-lined floor - instead of a solid cone.
+
+    A first attempt only flattened the central columns and left the outer
+    ring's natural taper alone; that ring is *deeper* than the flattened
+    center (the taper's natural depth peaks partway out, not at the very
+    center), so it stood in front of the camera and hid the flattening
+    completely. The fix: flatten almost every column to the same shallow
+    floor depth, so there's no tall ring left anywhere to block the view of
+    it - the whole underside reads as a flat crystal-studded floor. A
+    handful of untouched central columns are left at their full natural
+    (much deeper) depth to read as amethyst spikes still jutting down from
+    that floor, like actual crystal points.
+
+    Like desert.py's mesa terracing, this only ever *removes* already-carved
+    blocks and keeps col_bottom/columns in sync (drips/rim decoration read
+    those for each column's true bottom), and is deliberately local to
+    crystal.py rather than a carve_columns option, so no other theme is
+    affected.
+    """
+    floor_depth = max(6, int(max_depth * 0.3))
+
+    candidates = [c for c in columns if (c[4] / c[5] if c[5] else 1.0) < SPIKE_RADIUS_FRAC]
+    rng.shuffle(candidates)
+    n_spikes = min(len(candidates), rng.randint(3, 6))
+    spike_xy = {(c[0], c[1]) for c in candidates[:n_spikes]}
+
+    new_columns = []
+    for (x, z, topY, depth, r, localR) in columns:
+        if (x, z) in spike_xy or depth <= floor_depth:
+            new_columns.append((x, z, topY, depth, r, localR))
+            continue
+        bottomY, _, _, _ = col_bottom[(x, z)]
+        new_bottomY = topY - floor_depth
+        for y in range(bottomY, new_bottomY):
+            blocks.pop((x, y, z), None)
+        blocks[(x, new_bottomY, z)] = common.weighted_choice(rng, [
+            ("minecraft:budding_amethyst", 0.4),
+            ("minecraft:amethyst_block", 0.35),
+            ("minecraft:amethyst_cluster", 0.25),
+        ])
+        if rng.random() < 0.5:
+            blocks[(x, new_bottomY + 1, z)] = "minecraft:amethyst_cluster"
+        col_bottom[(x, z)] = (new_bottomY, topY, r, localR)
+        new_columns.append((x, z, topY, floor_depth, r, localR))
+    columns[:] = new_columns
+
+
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
                      num_drips=None, drip_density=0.05, flat_top=True, decorate_top=False,
                      decorate_underside=True, offset=(0, 0, 0)):
@@ -116,6 +169,9 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
     )
+    # scoop the central underside into a crystal-lined cavity - see
+    # _carve_geode_cavity above.
+    _carve_geode_cavity(blocks, col_bottom, columns, rng, max_depth)
 
     if decorate_underside:
         # crystal spikes are their own amethyst palette, distinct from the

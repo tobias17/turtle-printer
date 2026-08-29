@@ -59,6 +59,36 @@ def pick_mycelium_crust(rng):
     return "minecraft:podzol" if rng.random() < 0.05 else "minecraft:mycelium"
 
 
+def _cap_and_stem(blocks, col_bottom, columns, max_depth):
+    """Post-processes the already-carved (unmodified common.carve_columns)
+    underside into an actual mushroom silhouette - a wide, shallow cap
+    underside (roughly constant depth regardless of radius, like the flat
+    gill surface under a real mushroom cap) with a single thick stem plunging
+    down from the center - instead of the smooth cone every theme starts
+    from.
+
+    Like desert.py's mesa terracing, this only ever *removes* already-carved
+    blocks and keeps col_bottom/columns in sync (drips/rim decoration read
+    those for each column's true bottom), and is deliberately local to
+    mushroom.py rather than a carve_columns option, so no other theme is
+    affected.
+    """
+    cap_depth = max(4, int(max_depth * 0.35))
+    new_columns = []
+    for (x, z, topY, depth, r, localR) in columns:
+        frac = r / localR if localR else 1.0
+        if frac >= 0.18 and depth > cap_depth:
+            bottomY, _, _, _ = col_bottom[(x, z)]
+            new_bottomY = topY - cap_depth
+            for y in range(bottomY, new_bottomY):
+                blocks.pop((x, y, z), None)
+            col_bottom[(x, z)] = (new_bottomY, topY, r, localR)
+            new_columns.append((x, z, topY, cap_depth, r, localR))
+        else:
+            new_columns.append((x, z, topY, depth, r, localR))
+    columns[:] = new_columns
+
+
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
                      num_drips=None, drip_density=0.11, flat_top=True, decorate_top=False,
                      decorate_underside=True, offset=(0, 0, 0)):
@@ -110,6 +140,9 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # both existing carve_columns parameters, no shared code touched.
         taper_strength=0.9, taper_exponent=1.6,
     )
+    # reshape the smooth cone into a flat cap + central stem - see
+    # _cap_and_stem above.
+    _cap_and_stem(blocks, col_bottom, columns, max_depth)
 
     if decorate_underside:
         # root tendrils are their own palette - muddy mangrove roots, with
