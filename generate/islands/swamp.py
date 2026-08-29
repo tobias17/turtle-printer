@@ -91,33 +91,68 @@ def _rim_skirt(blocks, col_bottom, columns, max_depth):
     columns[:] = new_columns
 
 
+def _grow_one_root(blocks, rng, x, z, bottomY, length, root_r0, taper_power, angle):
+    """Grows a single gnarled root of `length` voxels starting at (x, z,
+    bottomY), curving via a slow random walk in `angle` (rather than a
+    fixed direction) so it reads as a gnarled root groping downward, not a
+    straight spike. Returns the (fx, fz, y, radius) state at its tip, for
+    optional offshoot branches."""
+    fx, fz = float(x), float(z)
+    for i in range(length):
+        y = bottomY - 1 - i
+        angle += rng.uniform(-0.5, 0.5)
+        drift = rng.uniform(0.2, 0.5)
+        fx += math.cos(angle) * drift
+        fz += math.sin(angle) * drift
+        bx, bz = round(fx), round(fz)
+        t = i / max(1, length - 1)
+        radius = root_r0 * max(0.0, 1 - t) ** taper_power
+        ir = math.floor(radius)
+        for dx in range(-ir, ir + 1):
+            for dz in range(-ir, ir + 1):
+                if dx * dx + dz * dz <= radius * radius:
+                    blocks.setdefault((bx + dx, y, bz + dz), "minecraft:mangrove_roots")
+    return fx, fz, bottomY - length, angle
+
+
 def _grow_root_trunks(blocks, columns, col_bottom, rng, max_depth):
-    """Grows a handful of thick mangrove-root trunks down from the deep rim
-    skirt left by _rim_skirt, each one drifting laterally as it descends -
-    a curving root reaching outward and down past the island's own deepest
-    point, instead of a straight vertical extension. Purely additive (like
-    common.generate_drips' own dx/dz-offset splash, just wandering instead
-    of centered) - it only ever places new blocks below/beside a rim
-    column's existing bottom and never touches col_bottom/columns, so nothing
-    downstream misattributes another column's true depth.
+    """Grows a handful of short, gnarled mangrove-root clumps down from the
+    deep rim skirt left by _rim_skirt - stubby roots groping down and
+    forking, kept close to the island's own natural depth, instead of a
+    straight vertical extension. Purely additive (like common.generate_drips'
+    own dx/dz-offset splash, just wandering instead of centered) - it only
+    ever places new blocks below/beside a rim column's existing bottom and
+    never touches col_bottom/columns, so nothing downstream misattributes
+    another column's true depth.
+
+    Kept deliberately short (scaled like common.generate_drips' own drip
+    lengths) and bent via a random walk in direction rather than a fixed
+    heading - a long, nearly-straight root reads as an out-of-place spike
+    poking away from the island, not part of its shape. Each main root
+    forks partway down into 1-2 thinner offshoots so it reads as a root
+    clump, not a single tendril.
     """
     lo, hi = RIM_BAND
     candidates = [c for c in columns if lo <= ((c[4] / c[5]) if c[5] else 1.0) <= hi]
     rng.shuffle(candidates)
-    n_trunks = min(len(candidates), rng.randint(4, 8))
+    n_trunks = min(len(candidates), rng.randint(6, 11))
+    len_floor = max(2, round(max_depth * 0.12))
+    len_ceiling = max(len_floor + 2, round(max_depth * 0.35))
     for (x, z, topY, depth, r, localR) in candidates[:n_trunks]:
         bottomY, _, _, _ = col_bottom[(x, z)]
-        length = rng.randint(int(max_depth * 0.5), int(max_depth * 1.1) + 3)
+        length = rng.randint(len_floor, len_ceiling)
         angle = rng.uniform(0, 2 * math.pi)
-        dirx, dirz = math.cos(angle), math.sin(angle)
-        fx, fz = float(x), float(z)
-        for i in range(length):
-            y = bottomY - 1 - i
-            drift = rng.uniform(0.15, 0.45)
-            fx += dirx * drift
-            fz += dirz * drift
-            bx, bz = round(fx), round(fz)
-            blocks.setdefault((bx, y, bz), "minecraft:mangrove_roots")
+        root_r0 = rng.uniform(1.3, 1.9)
+        taper_power = rng.uniform(1.1, 1.6)
+        fx, fz, fork_y, fork_angle = _grow_one_root(
+            blocks, rng, x, z, bottomY, length, root_r0, taper_power, angle)
+
+        for _ in range(rng.randint(1, 2)):
+            branch_len = rng.randint(len_floor, max(len_floor, int(length * 0.6)))
+            branch_angle = fork_angle + rng.uniform(-1.4, 1.4)
+            _grow_one_root(
+                blocks, rng, round(fx), round(fz), fork_y, branch_len,
+                root_r0 * 0.6, taper_power, branch_angle)
 
 
 def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=14,
