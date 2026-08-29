@@ -17,18 +17,28 @@ maturity:
    real builds so far (see `workspaces/statue/`).
 2. **Procedural generators (`generate/`, work in progress).** Python scripts
    that generate structures algorithmically instead of from a mesh —
-   `island.py` (floating islands), `tree.py` (a giant fantasy tree). These
-   are being built out for a new base design (a massive central tree
-   surrounded by floating islands) and are **not yet wired into the
-   mesh-to-turtle pipeline** — that integration is deliberately deferred
-   until the generation tooling itself settles. Don't assume `slice.py`
-   can currently consume their output.
+   `generate/islands/` (floating islands, one file per biome theme —
+   `grass.py`, `volcano.py`, `snow.py`, `desert.py`, `crystal.py`,
+   `mushroom.py`), `spire.py` (a dark central tower), `tree.py` (a giant
+   fantasy tree). These are being built out for a new base design (a
+   massive central tree/spire surrounded by floating islands) and are
+   **not yet wired into the mesh-to-turtle pipeline** — that integration is
+   deliberately deferred until the generation tooling itself settles. Don't
+   assume `slice.py` can currently consume their output.
 
 ## `generate/` conventions
 
-- **`generate/utils.py`** is the shared library both generator scripts use.
-  Don't duplicate logic across generator scripts — if two generators need
-  the same helper (noise, rendering, export), it belongs in `utils.py`.
+- **`generate/utils.py`** is the shared library every generator script
+  uses. Don't duplicate logic across generator scripts — if two generators
+  need the same helper (noise, rendering, export), it belongs in
+  `utils.py`.
+- **`generate/islands/common.py`** is the shared library for the island
+  theme generators specifically (silhouette/taper carving, drip
+  decoration, CLI plumbing). Each theme file (`grass.py`, `volcano.py`,
+  ...) should only contain what's actually unique to that biome — its
+  block palette, gradient, and decoration. If a new theme needs a tweak to
+  the shared carve/drip loop itself, extend `common.py` rather than forking
+  it.
 - **Canonical format: `Atlas` + `Structure`.** A `Structure` wraps a 3D
   `int16` array of block indices, shape `(X, Y, Z)` with **Y (axis 1)
   vertical**, 0 = air. An `Atlas` is the index-to-block-name legend. This is
