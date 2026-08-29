@@ -1,14 +1,19 @@
 """
 Sauron's Spire Generator (~150 blocks tall)
 =============================================
-Procedurally builds a voxel model of a colossal dark-lord tower: a
-tall, mostly-circular black-stone shaft that steps down through five
-tapering tiers (each stepping straight down to the next, no overhanging
-platforms), hollow all the way up (floors threaded by a ladder shaft,
-entered through a ground-level doorway) so there's a huge amount of
-hidden interior space to build in. It's topped by a crown of four black
-claw pillars, one at each cardinal direction, reaching up beside a
+Procedurally builds a voxel model of a colossal dark-lord tower: a tall,
+mostly-circular black-stone shaft with a single continuous taper (no
+lips or overhanging platforms) wrapped by a raised ridge that spirals up
+the whole height like a walkable staircase, hollow all the way up
+(floors threaded by a ladder shaft) so there's a huge amount of hidden
+interior space to build in. It's topped by a crown of four black claw
+pillars, one at each cardinal direction, reaching up beside a
 placeholder orange-wool orb (stand-in for a future draconic energy core).
+
+The exterior is deliberately left with no doorway or other opening --
+it should read as a solid, seamless tower from outside; the hollow
+interior is reached via the ladder shaft from the hatch at the top,
+under the crown.
 
 The tower is deliberately built with a flat, un-flared bottom -- it's
 meant to be planted on top of a separately-generated floating island (see
@@ -49,27 +54,37 @@ from utils import Atlas, Structure, render_screenshot, spherical_bump_noise
 # ---------------------------------------------------------------------------
 # Grid setup -- sized for a ~160 block tall spire with clawed crown spikes
 # ---------------------------------------------------------------------------
-(AIR, WALL, FLOOR, LADDER, SPIKE, ORB, LANTERN) = range(7)
+(AIR, WALL, FLOOR, LADDER, SPIKE, ORB) = range(6)
 
 SIZE_X, SIZE_Y, SIZE_Z = 140, 140, 200   # Z is "up" internally, swapped to Y at export
 CX, CY = SIZE_X // 2, SIZE_Y // 2
 
-# --- shaft profile: five tapering tiers, each stepping straight down to
-# the next (no flat overhanging cornice platform between them). Tiers are
-# exactly contiguous in Z, covering [0, SHAFT_TOP).
+# --- shaft profile: ONE continuous taper (each segment's r0 matches the
+# previous segment's r1 -- no radius jumps, so there's no flat "lip" ring
+# anywhere). The tiered/staircase look instead comes from a helical ridge
+# (STAIR_PITCH/STAIR_AMP below) that spirals up the surface, rather than
+# from the taper itself stepping down.
 # ---------------------------------------------------------------------------
 WALL_THICK = 3
 N_RIDGES = 6
 RIDGE_AMP = 0.05   # kept low so the shaft reads as circular, just a hint of fluting
 
 TIERS = [
-    dict(z0=0,   z1=15,  r0=21.6, r1=19.2),   # foundation -- flat-bottomed, sits on the island
-    dict(z0=15,  z1=45,  r0=16.8, r1=14.4),
-    dict(z0=45,  z1=71,  r0=13.2, r1=12.0),
-    dict(z0=71,  z1=93,  r0=10.8, r1=9.6),
-    dict(z0=93,  z1=115, r0=8.4,  r1=7.8),
+    dict(z0=0,   z1=15,  r0=21.6, r1=18.0),   # foundation -- flat-bottomed, sits on the island
+    dict(z0=15,  z1=45,  r0=18.0, r1=14.0),
+    dict(z0=45,  z1=71,  r0=14.0, r1=11.0),
+    dict(z0=71,  z1=93,  r0=11.0, r1=9.0),
+    dict(z0=93,  z1=115, r0=9.0,  r1=7.5),
 ]
 SHAFT_TOP = TIERS[-1]["z1"]
+
+# a raised ridge that spirals up the shaft like a walkable staircase: it
+# completes one full revolution every STAIR_PITCH blocks of height, and
+# sticks out STAIR_AMP blocks at the start of each turn, tapering back to
+# 0 by the end of that turn (a sawtooth in the helical phase) -- small
+# enough relative to WALL_THICK to never threaten the interior wall
+STAIR_PITCH = 23.0
+STAIR_AMP = 2.5
 
 # --- interior -----------------------------------------------------------
 GROUND_FLOOR_Z = 3
@@ -91,7 +106,6 @@ BLOCK_NAMES = {
     LADDER: "minecraft:ladder[facing=west]",
     SPIKE: "minecraft:polished_basalt",
     ORB: "minecraft:orange_wool",
-    LANTERN: "minecraft:lantern",
 }
 
 BLOCK_COLORS = {
@@ -100,7 +114,6 @@ BLOCK_COLORS = {
     "minecraft:ladder[facing=west]": "#4a3320",
     "minecraft:polished_basalt": "#3a3640",
     "minecraft:orange_wool": "#d2691e",
-    "minecraft:lantern": "#e0a03a",
 }
 
 
@@ -229,7 +242,8 @@ else:
 
 # ---------------------------------------------------------------------------
 # 1) Base + shaft: fluted tapering tower, hollowed out with floors and a
-#    ladder shaft, plus a ground-level entrance doorway.
+#    ladder shaft. No exterior openings -- reads as a solid tower from
+#    outside; the interior is reached via the ladder hatch under the crown.
 # ---------------------------------------------------------------------------
 def build_tower(grid, seed):
     for z in range(0, SHAFT_TOP):
@@ -253,6 +267,16 @@ def build_tower(grid, seed):
         # tiered/buttress silhouette into a melted-looking blob
         boundary = r_out * ridge + spherical_bump_noise(
             theta, np.full_like(theta, z * 0.03), seed + 7, n=6, amp=0.35)
+
+        # spiral staircase ridge: a sawtooth in the helical phase (z blended
+        # with angle) so the raised tread winds continuously up around the
+        # shaft instead of forming a flat ring at one height. Growing with
+        # phase (not shrinking) matters: the bulge must be narrowest right
+        # after each riser and widen going up to it, so the flat landing at
+        # the top of each turn has solid material directly underneath it
+        # (a step you can stand on) instead of overhanging empty air.
+        stair_phase = ((z - STAIR_PITCH * (theta / (2 * np.pi))) % STAIR_PITCH) / STAIR_PITCH
+        boundary = boundary + STAIR_AMP * stair_phase
 
         layer = grid[x0:x1, y0:y1, z]
         solid = dist <= boundary
@@ -278,18 +302,6 @@ def build_tower(grid, seed):
             hy0, hy1 = max(0, ly - HOLE_HALF - y0), min(y1 - y0, ly + HOLE_HALF + 1 - y0)
             layer[hx0:hx1, hy0:hy1] = AIR
         grid[lx, ly, z] = LADDER
-
-    # ground-level entrance doorway, cut straight through the base wall on
-    # the -X side (opposite the ladder, which hugs +X)
-    door_z0, door_z1 = GROUND_FLOOR_Z + FLOOR_THICK + 1, GROUND_FLOOR_Z + FLOOR_THICK + 5
-    zc = (door_z0 + door_z1) // 2
-    r_out_d, r_in_d = outer_radius(zc), hollow_radius(zc)
-    dx0, dx1 = CX - int(r_out_d) - 2, CX - int(r_in_d) + 2
-    grid[dx0:dx1, CY - 2:CY + 3, door_z0:door_z1] = AIR
-
-    # a lantern flanking each side of the doorway, standing just inside it
-    for dy in (-2, 2):
-        grid[dx1 - 2, CY + dy, door_z0] = LANTERN
 
 
 # ---------------------------------------------------------------------------
