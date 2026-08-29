@@ -214,17 +214,19 @@ def build_canopy(grid):
     def crown_r(t):
         return 22.0 * (1 - t) + 10.0 * t
 
-    fill_tapered_column(grid, TRUNK_TOP_Z, min(SIZE_Z, CANOPY_BASE_Z + 45), crown_r,
+    fill_tapered_column(grid, TRUNK_TOP_Z, min(SIZE_Z, CANOPY_BASE_Z + 20), crown_r,
                          WOOD, noise_seed=61, noise_amp=2.2)
 
     # Forking support branches -- wide-reaching but shallow-climbing, since
-    # the canopy above them is now broad rather than tall.
+    # the canopy above them is now broad rather than tall. Kept well clear
+    # of the canopy blanket's top surface (see top_z below) so the branch
+    # tips stay buried in foliage instead of poking out above it.
     grow_limb_system(
-        grid, origin_z=TRUNK_TOP_Z + 15, n_primary=13, primary_radius=19.0,
-        primary_length=95, dive_dir=1, max_depth=2,
+        grid, origin_z=TRUNK_TOP_Z + 5, n_primary=13, primary_radius=19.0,
+        primary_length=80, dive_dir=1, max_depth=2,
         seed_base=1200, block=WOOD, angle_jitter=0.12,
         child_range=(2, 3), radius_shrink=(0.55, 0.72),
-        length_shrink=(0.55, 0.72), z_slope_range=(0.14, 0.24),
+        length_shrink=(0.55, 0.72), z_slope_range=(0.08, 0.13),
         wobble_amp=5.0, min_radius_to_fork=4.5,
         fork_angle_spread=0.5)
 
