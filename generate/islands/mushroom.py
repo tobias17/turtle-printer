@@ -2,22 +2,20 @@
 Fungal Floating Island Generator for Minecraft
 ===================================================
 
-A mycelium/swamp island variant: a mycelium crust on top, grading down
-through dirt, coarse dirt and mud into the plain rock core every island
-theme shares underneath. Giant mushrooms grow on top instead of trees; the
-underside grows hanging mangrove-root tendrils tipped with the occasional
-glowing shroomlight instead of rocky drips.
+A mycelium island variant: solid mycelium all the way through, top to
+underside, shaped into a flat mushroom cap with a single thick white stem
+plunging down from the center - just those two blocks, no gradient, no
+gill texture, no hanging drips or rim fringe. Giant mushrooms can grow on
+top instead of trees.
 
-Shares its silhouette/taper/drip machinery with the other island themes in
+Shares its silhouette/taper machinery with the other island themes in
 generate/islands/ (see common.py) - this file only supplies the fungal-
-specific block choices and decoration.
+specific block choices and the cap/stem shape.
 
 Usage:
     python mushroom.py --diameter 40
     python mushroom.py --diameter 40 --seed 7
 """
-
-import math
 
 import common
 
@@ -25,27 +23,7 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Mycelium crust over solid dirt "cap flesh" - kept to just these two so the
-# cap underside reads as one clean fleshy mass; the stem is recolored
-# separately (see _cap_and_stem) so it reads as an actual stem, not more cap.
-GRADIENT = [
-    "minecraft:mycelium",
-    "minecraft:dirt",
-]
-
 STEM_BLOCK = "minecraft:mushroom_stem"
-
-
-def pick_gradient(rng, t, jitter=0.0):
-    """Picks a block for depth-fraction t in [0, 1] (0 = right at the
-    mycelium crust, 1 = deepest rock). `jitter` (driven only by smooth
-    per-column noise) nudges the whole column toward a neighboring shade so
-    the band edge is wavy instead of a razor-straight ring, without
-    per-voxel dithering."""
-    n = len(GRADIENT)
-    pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    idx = int(round(min(max(pos, 0.0), n - 1)))
-    return GRADIENT[idx]
 
 
 def pick_mycelium_crust(rng):
@@ -61,12 +39,11 @@ def _cap_and_stem(blocks, col_bottom, columns, rng, max_depth):
     down from the center - instead of the smooth cone every theme starts
     from. The stem columns are also recolored solid `STEM_BLOCK` (the real
     white mushroom-stem block) so the stem reads as an actual stem instead
-    of just deeper dirt.
+    of just more purple cap.
 
     Like desert.py's mesa terracing, this only ever *removes* already-carved
-    blocks and keeps col_bottom/columns in sync (drips/rim decoration read
-    those for each column's true bottom), and is deliberately local to
-    mushroom.py rather than a carve_columns option, so no other theme is
+    blocks and keeps col_bottom/columns in sync, and is deliberately local
+    to mushroom.py rather than a carve_columns option, so no other theme is
     affected.
     """
     cap_depth = max(4, int(max_depth * 0.35))
@@ -89,29 +66,6 @@ def _cap_and_stem(blocks, col_bottom, columns, rng, max_depth):
     columns[:] = new_columns
 
 
-GILL_COUNT = 26  # number of radiating gill lines traced across the cap underside
-
-
-def _gill_texture(blocks, col_bottom, columns):
-    """Traces thin radiating gill lines (in STEM_BLOCK, the same white as
-    the stem) across the flat cap underside carved by _cap_and_stem -
-    real mushroom gills are thin plates radiating out from the stem to the
-    rim, not the random scattered vines/drips every other theme's
-    underside decoration produces. Only recolors the single exposed bottom
-    face of each cap column, so it's a texture on the existing flat
-    surface, not a shape change.
-    """
-    for (x, z, topY, depth, r, localR) in columns:
-        frac = r / localR if localR else 1.0
-        if frac < 0.18:
-            continue  # stem region, no gills
-        theta = math.atan2(z, x) % (2 * math.pi)
-        bucket = theta / (2 * math.pi) * GILL_COUNT
-        if abs(bucket - round(bucket)) < 0.14:
-            bottomY, _, _, _ = col_bottom[(x, z)]
-            blocks[(x, bottomY, z)] = STEM_BLOCK
-
-
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
                      num_drips=None, drip_density=0.04, flat_top=True, decorate_top=False,
                      decorate_underside=True, offset=(0, 0, 0)):
@@ -121,34 +75,25 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     diameter        - island top diameter in blocks (radius = diameter / 2)
     flat_top        - if True (default), the top surface is a single flat
                        Y level. Outline is still irregular.
-    top_thickness_range - (min, max) number of mycelium-crust layers,
-                       before the dirt/mud gradient starts.
-    num_drips / drip_density - see grass.py; here each "drip" is a sparse
-                       hanging root tendril, occasionally glow-tipped.
+    top_thickness_range - unused by this theme; the whole cap is solid
+                       mycelium regardless of depth (kept only for CLI/
+                       run_cli signature compatibility).
+    num_drips / drip_density - unused by this theme; the underside is just
+                       the flat solid-mycelium cap and stem, no drips
+                       (kept only for CLI/run_cli signature compatibility).
     decorate_top     - if True, scatters small mushrooms and grows a couple
                        of giant mushrooms on top.
-    decorate_underside - a few root tendrils plus a light rim moss fringe.
-                       On by default. The cap's radiating gill lines
-                       (_gill_texture) always run - they're the cap's basic
-                       underside texture, not optional decoration.
+    decorate_underside - unused by this theme; the cap has no underside
+                       decoration (kept only for CLI/run_cli signature
+                       compatibility).
     """
     size, half, radius = common.grid_dims(diameter)
-
-    def grid_for(cell_blocks, minimum=6):
-        return max(minimum, size // cell_blocks)
-
-    gradient_noise = common.value_noise_2d(size, grid_for(4, 8), seed + 9) * 1.8
-    speckle_noise = common.value_noise_2d(size, grid_for(2, 12), seed + 13) * 1.1
 
     def top_block(rng, x, z, xi, zi):
         return pick_mycelium_crust(rng)
 
     def body_block(rng, x, z, xi, zi, y_offset, thickness, total_depth):
-        if y_offset < thickness:
-            return pick_mycelium_crust(rng)
-        g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
-        t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        return pick_gradient(rng, t_grad, jitter=g_jitter)
+        return pick_mycelium_crust(rng)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -158,32 +103,9 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         taper_strength=0.9, taper_exponent=1.6,
     )
     # reshape the smooth cone into a flat cap + central stem (recolored solid
-    # white) - see _cap_and_stem above.
+    # white) - see _cap_and_stem above. Everything carved is already solid
+    # mycelium, so this is the only underside shaping this theme does.
     _cap_and_stem(blocks, col_bottom, columns, rng, max_depth)
-    # trace radiating gill lines across the flat cap underside - see
-    # _gill_texture above. Unconditional, like _cap_and_stem: this is the
-    # cap's basic underside texture, not optional decoration on top of it.
-    _gill_texture(blocks, col_bottom, columns)
-
-    if decorate_underside:
-        # a few root tendrils plunging from the stem base, with a rare
-        # glowing shroomlight tip - kept sparse so they read as a handful of
-        # roots reaching for the ground, not a scatter of random bits
-        # competing with the gill lines.
-        def drip_block(rng, t, is_tip):
-            return "minecraft:shroomlight" if is_tip else "minecraft:muddy_mangrove_roots"
-
-        common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
-                               num_drips, drip_density, drip_block)
-
-        # a light moss fringe at the true rim - sparse, like the other
-        # themes' vine/root fringes, not a dense curtain fighting the gills
-        # for attention.
-        common.decorate_rim_underside(
-            rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:vine",
-            r_frac_threshold=0.55, chance=0.12, length_range=(2, 4),
-        )
 
     if decorate_top:
         # sparse small mushrooms on the top surface
@@ -223,11 +145,7 @@ def generate_scene(seed=0):
 
 BLOCK_COLORS = {
     "minecraft:mycelium": "#6f5a6e",
-    "minecraft:dirt": "#6b4a2b",
     "minecraft:mushroom_stem": "#e8e0d0",
-    "minecraft:muddy_mangrove_roots": "#4a3828",
-    "minecraft:shroomlight": "#f0a030",
-    "minecraft:vine": "#3f6b2a",
     "minecraft:red_mushroom": "#c03030",
     "minecraft:brown_mushroom": "#8a6a48",
     "minecraft:red_mushroom_block": "#a83232",
@@ -248,8 +166,8 @@ def main():
         block_colors=BLOCK_COLORS,
         single_title_fn=lambda diameter, seed: f"fungal floating island (d={diameter}, seed={seed})",
         scene_title_fn=lambda seed: f"fungal multi-island demo scene (seed={seed})",
-        num_drips_help=("number of hanging root tendrils (default: auto-scales with the "
-                         "island's rim geometry - see --drip-density)"),
+        num_drips_help="unused by this theme - the underside is just the flat solid-mycelium "
+                        "cap and stem, kept only for CLI compatibility",
         decorate_top_help="scatter mushrooms and grow giant mushrooms on top (off by default)",
     )
 
