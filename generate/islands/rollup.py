@@ -53,6 +53,7 @@ CANONICAL_OUT = "generate/out/renders/rollup.png"
 THEME_NAMES = [
     "grass", "volcano", "snow", "crystal", "desert", "mushroom",
     "coral", "ruins", "swamp", "prismarine", "hive", "bones", "gearworks",
+    "spire_base",
 ]
 DEFAULT_SEEDS = "1,2,3,4"
 # Matches the midpoint of generate/scene.py's DIAMETER_RANGE (100-120) -

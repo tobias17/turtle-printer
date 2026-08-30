@@ -4,10 +4,13 @@ Grand Scene Composer
 Combines Sauron's spire (spire.py) with one island of every theme this
 project has (13: grass, volcano, snow, desert, mushroom, bones, crystal,
 coral, ruins, swamp, prismarine, hive, gearworks), each sized within
-DIAMETER_RANGE. The spire doesn't get a dedicated island of its own: it's
-planted on top of the HOST_THEME (volcano) island, fixed at the origin.
+DIAMETER_RANGE. The spire doesn't get a themed island of its own: it's
+planted on top of a dedicated, deliberately plain dark-stone platform
+(spire_base.py - not one of the 13 themes, so it's never placed a second
+time in the ring), fixed at the origin. Every one of the 13 themes,
+volcano included, is just a normal ring island now.
 
-The other twelve are packed as close to the host as they can get (see
+All thirteen are packed as close to the host as they can get (see
 _place_closest): each is dropped in at the smallest radius, and a random
 angle at that radius, that clears a minimum distance (island radius +
 neighbor's radius + GAP) from every island already placed - so the whole
@@ -73,6 +76,7 @@ sys.path.insert(0, str(HERE / "islands"))   # common.py + theme modules
 
 from utils import render_screenshot, BG_COLOR, fractal_noise_2d  # noqa: E402
 import spire  # noqa: E402
+import spire_base  # noqa: E402
 import common  # noqa: E402
 import grass, volcano, snow, desert, mushroom, bones  # noqa: E402
 import crystal, coral, ruins, swamp, prismarine, hive, gearworks  # noqa: E402
@@ -84,7 +88,8 @@ THEME_MODULES = {
     "gearworks": gearworks,
 }
 ALL_THEMES = list(THEME_MODULES)
-HOST_THEME = "volcano"  # whichever island the spire is planted on, fixed at the origin
+HOST_MODULE = spire_base  # the plain dark-stone platform the spire is planted on, fixed at
+                           # the origin - not one of ALL_THEMES, so it never shows up twice
 
 # Each theme's flat top surface is always one fixed block (checked directly
 # against every theme module's own top_block function) - used only to look
@@ -98,6 +103,7 @@ TOP_BLOCK = {
     "prismarine": "minecraft:prismarine_bricks", "hive": "minecraft:honeycomb_block",
     "gearworks": "minecraft:copper_block",
 }
+HOST_TOP_COLOR = spire_base.BLOCK_COLORS["minecraft:deepslate"]  # for _place_closest's color spread
 
 DIAMETER_RANGE = (100, 120)
 GAP = 18  # minimum clear void every pair of islands (host included) must keep between their footprints
@@ -221,12 +227,12 @@ def build_scene(seed=1):
 
     host_diameter = round(rng.uniform(*DIAMETER_RANGE))
     host_max_depth = max(6, host_diameter // 2)
-    blocks.update(THEME_MODULES[HOST_THEME].generate_island(
+    blocks.update(HOST_MODULE.generate_island(
         seed=seed, diameter=host_diameter, max_depth=host_max_depth,
         decorate_top=False, decorate_underside=True, offset=(0, 0, 0),
     ))
-    placed.append((0.0, 0.0, host_diameter / 2.0, top_colors[HOST_THEME]))
-    print(f"host {HOST_THEME} island (spire): d={host_diameter}")
+    placed.append((0.0, 0.0, host_diameter / 2.0, HOST_TOP_COLOR))
+    print(f"host spire-base island (spire): d={host_diameter}")
 
     print("generating spire...")
     grid = spire.generate_spire(seed=seed)
@@ -242,7 +248,7 @@ def build_scene(seed=1):
     height_span = spire_height * HEIGHT_FRAC_MAX
     height_fraction = _height_fraction_field(seed + 9973)
 
-    order = [t for t in ALL_THEMES if t != HOST_THEME]
+    order = list(ALL_THEMES)
     rng.shuffle(order)
 
     for i, theme in enumerate(order):
@@ -269,7 +275,7 @@ def build_scene(seed=1):
 
 
 BLOCK_COLORS = {}
-for _mod in list(THEME_MODULES.values()) + [spire]:
+for _mod in list(THEME_MODULES.values()) + [spire, spire_base]:
     BLOCK_COLORS.update(_mod.BLOCK_COLORS)
 
 
