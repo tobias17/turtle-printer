@@ -1,27 +1,38 @@
 """
 Grand Scene Composer
 =====================
-Combines Sauron's spire (spire.py) with thirty floating islands - five of
-each theme (grass, volcano, snow, desert, mushroom, bones), each with its
-own random diameter spanning DIAMETER_RANGE. The spire doesn't get a
-dedicated island of its own: it's planted on top of the single largest of
-the five volcano islands, which still counts as one of volcano's five (so
-the scene stays at exactly five per theme, thirty total).
+Combines Sauron's spire (spire.py) with one island of every theme this
+project has (13: grass, volcano, snow, desert, mushroom, bones, crystal,
+coral, ruins, swamp, prismarine, hive, gearworks), each sized within
+DIAMETER_RANGE. The spire doesn't get a dedicated island of its own: it's
+planted on top of the HOST_THEME (volcano) island, fixed at the origin.
 
-Placement is randomized but "human random", like a smart-shuffle playlist:
-islands are packed outward from the host volcano island (largest-diameter
-first, for a tight non-overlapping fit) into random positions, rejecting
-any candidate spot that either overlaps an already-placed island/the host,
-or sits within THEME_MIN_ANGLE_DEG of another island of the SAME theme - so
-same-theme islands always end up well spread around the circle instead of
-clustering together, without the layout looking like a mechanical grid.
+The other twelve are arranged in a ring around the host - evenly spaced by
+angle, at a common radius and height (roughly halfway up the spire) - then
+each gets its own independent Gaussian jitter on angle, radius, and height,
+so the ring reads as organic rather than a mechanical spoke pattern.
+
+The ring ORDER (which theme sits at which position around the circle) is
+not random: each theme's top-platform block has a color (see TOP_BLOCK,
+sourced straight from that theme's own BLOCK_COLORS), and a short local
+search spreads the order out so two similarly-colored tops - e.g. grass's
+green and ruins' moss green - rarely end up next to each other. It's a
+cosmetic nudge, not a hard constraint, so the eventual order still looks
+hand-shuffled rather than color-sorted.
 
 Outputs (into --out-dir, default generate/out):
     <out>.npz    canonical Structure (numpy voxel array + Atlas) - the same
                  format every other generator in this project produces.
-    <out>.png    isometric preview render
+    <out>.png    preview render, two panels side by side: isometric on the
+                 left, top-down on the right.
     <out>.schem  WorldEdit schematic (only with --schem, if mcschematic is
                  installed)
+
+generate/out/scene.png is the STANDARD location to look at this scene -
+running the script with no arguments always (re)writes exactly that path,
+so that's where to look (or diff against) rather than a one-off render
+elsewhere. Point --out/--out-dir at a scratch location for throwaway
+experiments instead of overwriting it.
 
 Usage:
     python generate/scene.py                # generate with the default seed
@@ -40,111 +51,96 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))               # utils.py, spire.py
 sys.path.insert(0, str(HERE / "islands"))   # common.py + theme modules
 
-from utils import render_screenshot  # noqa: E402
+from utils import render_screenshot, _add_title_bar, _load_font, BG_COLOR  # noqa: E402
 import spire  # noqa: E402
 import common  # noqa: E402
 import grass, volcano, snow, desert, mushroom, bones  # noqa: E402
+import crystal, coral, ruins, swamp, prismarine, hive, gearworks  # noqa: E402
 
 THEME_MODULES = {
-    "grass": grass, "volcano": volcano, "snow": snow,
-    "desert": desert, "mushroom": mushroom, "bones": bones,
+    "grass": grass, "volcano": volcano, "snow": snow, "desert": desert,
+    "mushroom": mushroom, "bones": bones, "crystal": crystal, "coral": coral,
+    "ruins": ruins, "swamp": swamp, "prismarine": prismarine, "hive": hive,
+    "gearworks": gearworks,
 }
-THEMES = list(THEME_MODULES)
+ALL_THEMES = list(THEME_MODULES)
+HOST_THEME = "volcano"  # whichever island the spire is planted on, fixed at the origin
 
-N_PER_THEME = 5
-DIAMETER_RANGE = (40, 100)  # each island's diameter is randomized somewhere in this span
-DIAMETER_JITTER_FRAC = 0.15  # +/- this fraction of the span, applied per island on top of its spread target
+# Each theme's flat top surface is always one fixed block (checked directly
+# against every theme module's own top_block function) - used only to look
+# up that theme's representative color for the ring-order color spread.
+TOP_BLOCK = {
+    "grass": "minecraft:grass_block", "volcano": "minecraft:blackstone",
+    "snow": "minecraft:snow_block", "desert": "minecraft:sand",
+    "mushroom": "minecraft:mycelium", "bones": "minecraft:bone_block",
+    "crystal": "minecraft:calcite", "coral": "minecraft:sand",
+    "ruins": "minecraft:moss_block", "swamp": "minecraft:mud",
+    "prismarine": "minecraft:prismarine_bricks", "hive": "minecraft:honeycomb_block",
+    "gearworks": "minecraft:copper_block",
+}
 
-GAP = 6                     # minimum clear void kept between any two islands' footprints
-MAX_SPREAD = 280            # width of the annulus satellites are scattered into, beyond the host's edge
-THEME_MIN_ANGLE_DEG = 45    # minimum angular separation enforced between same-theme islands
-MAX_TRIES = 600
-Y_JITTER = (-10, 35)        # satellite top-surface height, relative to the host island's own top -
-                             # kept modest so the whole scene (spire included) stays under 256 blocks tall
+DIAMETER_RANGE = (100, 120)
 
-
-def _spanning_diameters(rng, n, lo, hi, jitter_frac=DIAMETER_JITTER_FRAC):
-    """n diameters spread evenly across [lo, hi], each independently jittered
-    by up to +/- jitter_frac of the span - so a theme's islands cover the
-    whole size range (not clustered near one value) while no two are
-    identical or mechanically evenly-spaced."""
-    span = hi - lo
-    step = span / (n - 1) if n > 1 else 0
-    jitter = span * jitter_frac
-    return [
-        round(min(hi, max(lo, lo + step * i + rng.uniform(-jitter, jitter))))
-        for i in range(n)
-    ]
+# Ring layout: 12 satellites (everything but the host) spaced 30 degrees
+# apart at RING_RADIUS, each independently perturbed by Gaussian noise
+# rather than placed exactly on the ideal spoke - RADIUS_STD/ANGLE_STD_DEG
+# are kept well under half the nominal spacing so jitter reads as organic
+# variation, not overlap. RING_RADIUS itself is sized for the *tangential*
+# fit (neighbors at the mean diameter, 30 degrees apart, need to clear each
+# other), which needs far more room than simply clearing the host.
+N_RING = len(ALL_THEMES) - 1
+ANGLE_STEP_DEG = 360 / N_RING
+_MEAN_RADIUS = sum(DIAMETER_RANGE) / 4  # mean island radius = mean diameter / 2
+RING_RADIUS = _MEAN_RADIUS / math.sin(math.radians(ANGLE_STEP_DEG / 2)) + _MEAN_RADIUS
+RADIUS_STD = 15
+ANGLE_STD_DEG = 4
+HEIGHT_STD = 20  # islands sit around halfway up the spire, +/- this (see build_scene)
 
 
 # ---------------------------------------------------------------------------
-# Placement: "smart shuffle" packing around the center
+# Ring order: spread similarly-colored tops apart
 # ---------------------------------------------------------------------------
 
-def _angle_diff_deg(a, b):
-    d = abs(a - b) % 360
-    return min(d, 360 - d)
+def _hex_to_rgb(hex_color):
+    h = hex_color.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
 
-def _place_islands(rng, specs, host):
-    """specs: [(theme, diameter), ...], largest-diameter first. `host` is the
-    already-placed island (dict with theme/x/z/radius/angle) everything else
-    is packed around. Returns one dict per spec with world x/z (and
-    angle/dist, for logging) added, via rejection sampling into an annulus
-    around the host."""
-    placed = [host]
-    r_lo = host["radius"] + GAP
-    r_hi = r_lo + MAX_SPREAD
+def _color_dist(hex_a, hex_b):
+    ra, ga, ba = _hex_to_rgb(hex_a)
+    rb, gb, bb = _hex_to_rgb(hex_b)
+    return math.sqrt((ra - rb) ** 2 + (ga - gb) ** 2 + (ba - bb) ** 2)
 
-    for theme, diameter in specs:
-        radius = diameter / 2.0
-        chosen = None
-        for relax in (False, True):  # second pass drops the same-theme angle rule
-            if chosen is not None:
-                break
-            for _ in range(MAX_TRIES):
-                angle = rng.uniform(0, 360)
-                dist = math.sqrt(rng.uniform(r_lo ** 2, r_hi ** 2))
-                x = dist * math.cos(math.radians(angle))
-                z = dist * math.sin(math.radians(angle))
 
-                ok = all(
-                    math.hypot(x - o["x"], z - o["z"]) >= radius + o["radius"] + GAP
-                    for o in placed
-                )
-                if ok and not relax:
-                    ok = all(
-                        _angle_diff_deg(angle, o["angle"]) >= THEME_MIN_ANGLE_DEG
-                        for o in placed if o["theme"] == theme
-                    )
-                if ok:
-                    chosen = (x, z, angle, dist)
-                    break
+def _order_by_color_spread(rng, themes, colors, iterations=2000):
+    """Circular ordering of `themes` that keeps similarly-colored neighbors
+    apart: starts from a random shuffle, then hill-climbs by swapping random
+    pairs whenever it doesn't increase the total "closeness" penalty (a
+    lower-is-better sum of 1/(distance+1) over adjacent pairs). Stays random
+    rather than fully color-sorted - it only ever takes swaps that are as
+    good or better than what it had, from a random starting point."""
+    order = list(themes)
+    rng.shuffle(order)
+    n = len(order)
 
-        if chosen is None:
-            # Last resort (should be rare): take the least-overlapping of
-            # another batch of candidates rather than failing outright.
-            best, best_overlap = None, None
-            for _ in range(MAX_TRIES):
-                angle = rng.uniform(0, 360)
-                dist = math.sqrt(rng.uniform(r_lo ** 2, r_hi ** 2))
-                x = dist * math.cos(math.radians(angle))
-                z = dist * math.sin(math.radians(angle))
-                overlap = max(
-                    (radius + o["radius"] + GAP) - math.hypot(x - o["x"], z - o["z"])
-                    for o in placed
-                )
-                if best_overlap is None or overlap < best_overlap:
-                    best, best_overlap = (x, z, angle, dist), overlap
-            chosen = best
-            print(f"  warning: could not find a fully clear spot for {theme} d={diameter}, "
-                  f"used the least-overlapping candidate")
+    def penalty():
+        return sum(
+            1.0 / (_color_dist(colors[order[i]], colors[order[(i + 1) % n]]) + 1.0)
+            for i in range(n)
+        )
 
-        x, z, angle, dist = chosen
-        placed.append(dict(theme=theme, diameter=diameter,
-                            x=x, z=z, radius=radius, angle=angle, dist=dist))
-
-    return placed[1:]  # drop the host entry (the caller already has it)
+    current = penalty()
+    for _ in range(iterations):
+        i, j = rng.randrange(n), rng.randrange(n)
+        if i == j:
+            continue
+        order[i], order[j] = order[j], order[i]
+        p = penalty()
+        if p <= current:
+            current = p
+        else:
+            order[i], order[j] = order[j], order[i]  # revert
+    return order
 
 
 # ---------------------------------------------------------------------------
@@ -166,66 +162,94 @@ def structure_to_blocks(structure, offset=(0, 0, 0)):
 
 def build_scene(seed=1):
     rng = random.Random(seed)
-
-    theme_diameters = {theme: _spanning_diameters(rng, N_PER_THEME, *DIAMETER_RANGE) for theme in THEMES}
-
-    # the spire needs a home: the single largest volcano island becomes the
-    # host, planted at the origin - it still counts as one of volcano's five
-    # instances rather than an extra island.
-    host_idx = max(range(N_PER_THEME), key=lambda i: theme_diameters["volcano"][i])
-    host_diameter = theme_diameters["volcano"][host_idx]
-
-    specs = [
-        (theme, diameter)
-        for theme in THEMES
-        for i, diameter in enumerate(theme_diameters[theme])
-        if not (theme == "volcano" and i == host_idx)
-    ]
-    rng.shuffle(specs)
-    specs.sort(key=lambda s: -s[1])  # largest first, for tighter packing
-
-    host = dict(theme="volcano", x=0.0, z=0.0, radius=host_diameter / 2.0, angle=0.0)
-    placements = _place_islands(rng, specs, host)
-
     blocks = {}
 
+    host_diameter = round(rng.uniform(*DIAMETER_RANGE))
     host_max_depth = max(6, host_diameter // 2)
-    blocks.update(volcano.generate_island(
+    blocks.update(THEME_MODULES[HOST_THEME].generate_island(
         seed=seed, diameter=host_diameter, max_depth=host_max_depth,
         decorate_top=False, decorate_underside=True, offset=(0, 0, 0),
     ))
-    print(f"host volcano island (spire): d={host_diameter}")
-
-    for i, p in enumerate(placements):
-        module = THEME_MODULES[p["theme"]]
-        y = rng.randint(*Y_JITTER)
-        max_depth = max(6, p["diameter"] // 2)
-        offset = (round(p["x"]), y, round(p["z"]))
-        island_blocks = module.generate_island(
-            seed=seed * 1000 + i + 1, diameter=p["diameter"], max_depth=max_depth,
-            decorate_top=False, decorate_underside=True, offset=offset,
-        )
-        blocks.update(island_blocks)
-        print(f"  {p['theme']:<8} d={p['diameter']:<4} "
-              f"pos=({offset[0]:>5}, {offset[1]:>4}, {offset[2]:>5})  "
-              f"dist={p['dist']:.0f} angle={p['angle']:.0f}deg")
+    print(f"host {HOST_THEME} island (spire): d={host_diameter}")
 
     print("generating spire...")
     grid = spire.generate_spire(seed=seed)
     spire_structure = spire.grid_to_structure(grid)
     spire.hollow_out(spire_structure.data, 2)
+    spire_height = int(np.nonzero(spire_structure.data)[1].max())
     # spire's own (X, Z) center is (CX, CY); its Y=0 is its flat base, which
     # needs to land right on the buildable surface just above the host
     # island's flat top (topY=0, so the surface to build on is y=1).
     spire_offset = (-spire.CX, 1, -spire.CY)
     blocks.update(structure_to_blocks(spire_structure, offset=spire_offset))
+    half_height = spire_offset[1] + spire_height / 2
+
+    ring_themes = [t for t in ALL_THEMES if t != HOST_THEME]
+    top_colors = {theme: THEME_MODULES[theme].BLOCK_COLORS[TOP_BLOCK[theme]] for theme in ring_themes}
+    order = _order_by_color_spread(rng, ring_themes, top_colors)
+    rotation = rng.uniform(0, 360)
+
+    for i, theme in enumerate(order):
+        module = THEME_MODULES[theme]
+        diameter = round(rng.uniform(*DIAMETER_RANGE))
+        angle = rotation + i * ANGLE_STEP_DEG + rng.gauss(0, ANGLE_STD_DEG)
+        dist = RING_RADIUS + rng.gauss(0, RADIUS_STD)
+        y = round(half_height + rng.gauss(0, HEIGHT_STD))
+        x = dist * math.cos(math.radians(angle))
+        z = dist * math.sin(math.radians(angle))
+        offset = (round(x), y, round(z))
+        max_depth = max(6, diameter // 2)
+
+        island_blocks = module.generate_island(
+            seed=seed * 1000 + i + 1, diameter=diameter, max_depth=max_depth,
+            decorate_top=False, decorate_underside=True, offset=offset,
+        )
+        blocks.update(island_blocks)
+        print(f"  {theme:<10} d={diameter:<4} pos=({offset[0]:>5}, {offset[1]:>4}, {offset[2]:>5})  "
+              f"dist={dist:.0f} angle={angle:.0f}deg")
 
     return blocks
 
 
 BLOCK_COLORS = {}
-for _mod in (grass, volcano, snow, desert, mushroom, bones, spire):
+for _mod in list(THEME_MODULES.values()) + [spire]:
     BLOCK_COLORS.update(_mod.BLOCK_COLORS)
+
+
+# ---------------------------------------------------------------------------
+# Two-panel preview: isometric | top-down
+# ---------------------------------------------------------------------------
+
+def _compose_views(view_paths, labels, out_path, title):
+    """Lays out the given rendered view images left-to-right on one shared
+    background, each captioned, under one title bar."""
+    from PIL import Image, ImageDraw
+
+    imgs = [Image.open(p).convert("RGB") for p in view_paths]
+    h = max(img.height for img in imgs)
+
+    def fit_h(img):
+        if img.height == h:
+            return img
+        w = round(img.width * h / img.height)
+        return img.resize((w, h), Image.LANCZOS)
+
+    imgs = [fit_h(img) for img in imgs]
+
+    gap, label_h = 24, 34
+    font = _load_font(22)
+    body_w = sum(img.width for img in imgs) + gap * (len(imgs) - 1)
+    body = Image.new("RGB", (body_w, label_h + h), BG_COLOR)
+    draw = ImageDraw.Draw(body)
+    x = 0
+    for img, label in zip(imgs, labels):
+        bbox = draw.textbbox((0, 0), label, font=font)
+        tw = bbox[2] - bbox[0]
+        draw.text((x + (img.width - tw) / 2, 6), label, fill=(26, 26, 26), font=font)
+        body.paste(img, (x, label_h))
+        x += img.width + gap
+
+    _add_title_bar(body, title, bg_color=BG_COLOR).save(out_path)
 
 
 # ---------------------------------------------------------------------------
@@ -260,10 +284,16 @@ def main():
         )
         for name, color in BLOCK_COLORS.items()
     }
-    png_path = render_screenshot(structure, args.out_dir / f"{args.out}.png",
-                                  title=f"grand scene (seed={args.seed})", palette=palette,
-                                  width=1600, height=1600)
-    print(f"Saved preview image to {png_path}")
+    out_path = args.out_dir / f"{args.out}.png"
+    view_paths = render_screenshot(
+        structure, out_path, title=None, palette=palette,
+        views=[dict(suffix="_iso", elev=11, azim=-55), dict(suffix="_top", elev=89, azim=-55)],
+        width=1600, height=1600,
+    )
+    _compose_views(view_paths, ["isometric", "top-down"], out_path, title=f"grand scene (seed={args.seed})")
+    for p in view_paths:
+        Path(p).unlink(missing_ok=True)
+    print(f"Saved preview image to {out_path}")
 
     if args.schem:
         structure.to_schematic(args.out_dir, args.out)
