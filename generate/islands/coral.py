@@ -41,7 +41,6 @@ CORAL_COLOR_CHOICES = [
     "minecraft:tube_coral_block",
     "minecraft:brain_coral_block",
     "minecraft:fire_coral_block",
-    "minecraft:horn_coral_block",
 ]
 
 BRANCH_THRESHOLD = 0.45  # clumping-noise cutoff for where coral colonies grow
@@ -229,7 +228,6 @@ BLOCK_COLORS = {
     "minecraft:tube_coral_block": "#2e6fd6",
     "minecraft:brain_coral_block": "#d15fa0",
     "minecraft:fire_coral_block": "#d1372e",
-    "minecraft:horn_coral_block": "#d1c62e",
     "minecraft:kelp": "#3f7a3f",
     "minecraft:sea_pickle": "#a8c93a",
 }

@@ -64,7 +64,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
                        length/thickness are randomized per-drip (each gets
                        its own cap, scaled off max_depth), so drips vary in
                        size instead of clustering near one shared maximum.
-    decorate_top     - if True, scatters grass/flowers/trees on top. Off by
+    decorate_top     - if True, scatters small trees on top. Off by
                        default so the surface stays clear to build on.
     decorate_underside - hanging root drips + vines + moss on the rock
                        underside. On by default for the floating-island look;
@@ -108,15 +108,6 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
                                        r_frac_threshold=0.55, chance=0.18, length_range=(2, 6))
 
     if decorate_top:
-        # sparse grass/flower decoration on the top surface
-        for (x, z, topY, depth, r, localR) in columns:
-            if r / localR < 0.9 and rng.random() < 0.12:
-                block = rng.choice(
-                    ["minecraft:short_grass", "minecraft:short_grass",
-                     "minecraft:fern", "minecraft:poppy", "minecraft:dandelion"]
-                )
-                blocks.setdefault((x, topY + 1, z), block)
-
         # a couple of small trees
         tree_spots = [c for c in columns if c[4] / c[5] < 0.55]
         rng.shuffle(tree_spots)
@@ -150,15 +141,10 @@ BLOCK_COLORS = {
     "minecraft:grass_block": "#5b8a3a",
     "minecraft:dirt": "#6b4a2b",
     "minecraft:stone": "#8a8a8a",
-    "minecraft:andesite": "#a3a3a0",
     "minecraft:mossy_cobblestone": "#5e6b4a",
     "minecraft:vine": "#3f6b2a",
     "minecraft:oak_log": "#5a3d1f",
     "minecraft:oak_leaves": "#3f7a2f",
-    "minecraft:short_grass": "#6fae3f",
-    "minecraft:fern": "#4f8f3f",
-    "minecraft:poppy": "#c0392b",
-    "minecraft:dandelion": "#e8c93a",
 }
 
 
@@ -177,7 +163,7 @@ def main():
         scene_title_fn=lambda seed: f"multi-island demo scene (seed={seed})",
         num_drips_help=("number of hanging root/stalactite drips (default: auto-scales with the "
                          "island's rim geometry - see --drip-density)"),
-        decorate_top_help="scatter grass/flowers/trees on top (off by default so it stays buildable)",
+        decorate_top_help="scatter small trees on top (off by default so it stays buildable)",
     )
 
 

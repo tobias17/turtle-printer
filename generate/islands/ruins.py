@@ -198,7 +198,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
             stump_h = rng.randint(1, 3)
             for dy in range(stump_h):
                 blocks[(x, topY + 1 + dy, z)] = ("minecraft:mossy_stone_bricks" if rng.random() < 0.6
-                                                  else "minecraft:cracked_stone_bricks")
+                                                  else "minecraft:cobblestone")
 
     # apply world offset
     ox, oy, oz = offset

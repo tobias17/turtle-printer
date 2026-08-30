@@ -169,8 +169,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
     num_drips / drip_density - see grass.py; here each "drip" is a hanging
                        clump of muck, distinct from the dedicated root
                        trunks grown from the rim skirt.
-    decorate_top     - if True, scatters lily pads, mangrove propagules and
-                       seagrass on top.
+    decorate_top     - if True, scatters lily pads and mangrove trees on top.
     decorate_underside - rim-skirt shaping, root trunks, hanging muck and
                        moss fringe on the underside. On by default.
     """
@@ -220,7 +219,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
         # sparse lily pads, mangrove propagules and seagrass on the top
         for (x, z, topY, depth, r, localR) in columns:
             if r / localR < 0.9 and rng.random() < 0.12:
-                block = rng.choice(["minecraft:lily_pad", "minecraft:fern", "minecraft:mangrove_propagule"])
+                block = "minecraft:lily_pad"
                 blocks.setdefault((x, topY + 1, z), block)
 
         # a couple of small mangrove trees
@@ -257,8 +256,6 @@ BLOCK_COLORS = {
     "minecraft:stone": "#8a8a8a",
     "minecraft:moss_carpet": "#4f7a2a",
     "minecraft:lily_pad": "#3f7a2f",
-    "minecraft:fern": "#4f8f3f",
-    "minecraft:mangrove_propagule": "#8a4a3a",
     "minecraft:mangrove_log": "#5c2a2a",
     "minecraft:mangrove_leaves": "#4a6b2a",
 }

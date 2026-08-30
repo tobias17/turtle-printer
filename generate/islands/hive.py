@@ -240,10 +240,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # sparse wildflowers and a beehive or two on the top surface
         for (x, z, topY, depth, r, localR) in columns:
             if r / localR < 0.9 and rng.random() < 0.12:
-                block = rng.choice(
-                    ["minecraft:dandelion", "minecraft:poppy",
-                     "minecraft:cornflower", "minecraft:oxeye_daisy", "minecraft:allium"]
-                )
+                block = rng.choice(["minecraft:dandelion", "minecraft:cornflower"])
                 blocks.setdefault((x, topY + 1, z), block)
 
         hive_spots = [c for c in columns if c[4] / c[5] < 0.6]
@@ -284,10 +281,7 @@ BLOCK_COLORS = {
     "minecraft:oak_planks": "#b8853f",
     "minecraft:beehive": "#d9a441",
     "minecraft:dandelion": "#e8c93a",
-    "minecraft:poppy": "#c0392b",
     "minecraft:cornflower": "#4166f5",
-    "minecraft:oxeye_daisy": "#e8e8d0",
-    "minecraft:allium": "#b070d0",
     "minecraft:birch_log": "#d8cfa8",
     "minecraft:birch_leaves": "#7bab5e",
 }

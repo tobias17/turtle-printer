@@ -42,11 +42,6 @@ GRADIENT = [
     "minecraft:deepslate",
 ]
 
-# Two near-identical purple stones, alternated for the crust so it isn't a
-# flat, uniform color - both read as the same "purple stone", just enough
-# texture variance to avoid looking painted.
-CRUST_BLOCKS = ["minecraft:purpur_block", "minecraft:purpur_pillar"]
-
 
 def pick_gradient(rng, t, jitter=0.0):
     """Picks a block for depth-fraction t in [0, 1] (0 = right at the
@@ -61,9 +56,9 @@ def pick_gradient(rng, t, jitter=0.0):
 
 
 def pick_crust(rng):
-    """Top-crust block: purple geode stone, lightly varied between two
-    near-identical purple blocks - the crust is a flat platform."""
-    return CRUST_BLOCKS[0] if rng.random() < 0.8 else CRUST_BLOCKS[1]
+    """Top-crust block: solid purple geode stone, no fleck - the crust is a
+    flat platform."""
+    return "minecraft:purpur_block"
 
 
 # ---------------------------------------------------------------------------
@@ -424,7 +419,6 @@ def generate_scene(seed=0):
 
 BLOCK_COLORS = {
     "minecraft:purpur_block": "#a884b0",
-    "minecraft:purpur_pillar": "#ab87b3",
     "minecraft:tuff": "#6d6a63",
     "minecraft:deepslate": "#393a3d",
     "minecraft:amethyst_block": "#8f5fd1",

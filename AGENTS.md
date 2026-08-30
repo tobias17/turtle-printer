@@ -153,19 +153,37 @@ theme must clear, written down so that doesn't happen again:
    smooth per-column depth blend, or a pile of independent per-voxel color
    choices, reads as texture, not shape, and does not satisfy this rule
    even if it's colorful.
-3. **Keep the palette minimal and every band solid.** 2-3 blocks for the
-   bulk crust/gradient list, chosen by rounding to the nearest band index
-   (`idx = round(pos)`, not a probabilistic blend) so each band is one flat
-   color - plus a small number of accent blocks reserved exclusively for the
-   structural feature and optional decoration. No "fleck chance" that
-   swaps in a random block at low probability anywhere in the bulk
-   material. Any smooth-noise `jitter` passed into the gradient picker must
-   come from a per-column field (`value_noise_2d`, indexed by `[xi, zi]`
-   only) - never redraw it per-voxel (e.g. never add a fresh
-   `rng.uniform(...)` inside `body_block_fn`, and never recolor a branch/
-   vein/trunk with an independent random pick per voxel along its length)
-   - that's what turns clean bands and clean structural features into
-   static.
+3. **Keep the palette minimal and every band solid - 7 distinct blocks per
+   theme, hard cap, no exceptions.** Count every `minecraft:` block name
+   the theme's own file can ever place - crust, gradient, structural
+   feature, drips/rim decoration, AND anything gated behind
+   `--decorate-top` or the theme's own `--scene` debris block - it all
+   counts toward the same 7, not just what a default render shows. In
+   practice that's usually 2-3 blocks for the bulk crust/gradient list,
+   chosen by rounding to the nearest band index (`idx = round(pos)`, not a
+   probabilistic blend) so each band is one flat color, plus a small number
+   of accent blocks reserved exclusively for the structural feature and
+   optional decoration - spend them deliberately (e.g. one clump of 2-3
+   flower/sapling choices, not five). If a theme's real-world reference
+   genuinely uses more than 7 materials (mesa.py's vanilla terracotta
+   striping is the concrete example - vanilla itself uses orange, plain,
+   yellow, red, white, brown and light-gray terracotta), drop the least
+   load-bearing ones rather than asking for an exception; note the trade-off
+   in the theme's module docstring so it's clear the omission was
+   deliberate, not an oversight. `BLOCK_COLORS` is the definitive count -
+   every block the code can place must have an entry there (nothing silently
+   missing) and every entry must actually be placed somewhere (no dead
+   colors left over from a removed feature) - a mismatch either way is a
+   bug. No "fleck chance" that swaps in a random block at low probability
+   anywhere in the bulk material. Any smooth-noise `jitter` passed into the
+   gradient picker must come from a per-column field (`value_noise_2d`,
+   indexed by `[xi, zi]` only) - never redraw it per-voxel (e.g. never add a
+   fresh `rng.uniform(...)` inside `body_block_fn`, and never recolor a
+   branch/vein/trunk with an independent random pick per voxel along its
+   length) - that's what turns clean bands and clean structural features
+   into static. This applies to a threshold decision too, not just a block
+   choice: nudging *where* a boundary falls with per-column jitter is fine,
+   rolling dice per-voxel on which side of it a block lands is not.
 4. **Don't touch `common.py` or any other theme file** when adding or
    fixing a theme. Add new local functions/parameters within the theme's
    own file; if the shared carve/drip loop genuinely needs a new
@@ -186,10 +204,14 @@ theme must clear, written down so that doesn't happen again:
      canonical one. Don't work around that guard - if you need `--out`,
      you're already making a scratch render, not the rollup.
    Confirm from the render: (a) the top is one solid color at every
-   diameter, (b) the underside reads as the intended shape, not noise, and
-   (c) check programmatically that every column's Y-values form one
-   contiguous run (no gaps) - a gap can be invisible from outside the
-   rendered mesh.
+   diameter, (b) the underside reads as the intended shape, not noise, (c)
+   check programmatically that every column's Y-values form one contiguous
+   run (no gaps) - a gap can be invisible from outside the rendered mesh,
+   and (d) count that theme's `BLOCK_COLORS` entries and confirm it's 7 or
+   fewer (rule 3) - do this for every theme you touched, not just the one
+   you were asked to change, since a shared edit (e.g. to `common.py`) or a
+   copy-pasted decoration snippet can silently push a different theme over
+   the cap.
 
 ## Environment
 

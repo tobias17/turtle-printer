@@ -136,7 +136,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 
 def generate_scene(seed=0):
     """One big fungal island plus satellites and floating boggy debris."""
-    return common.basic_scene(seed, generate_island, debris_block="minecraft:mud")
+    return common.basic_scene(seed, generate_island, debris_block="minecraft:mycelium")
 
 
 # ---------------------------------------------------------------------------

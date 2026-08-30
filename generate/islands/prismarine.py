@@ -228,7 +228,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
 def generate_scene(seed=0):
     """One big ocean-monument island plus satellites and floating prismarine
     debris."""
-    return common.basic_scene(seed, generate_island, debris_block="minecraft:prismarine")
+    return common.basic_scene(seed, generate_island, debris_block="minecraft:prismarine_bricks")
 
 
 # ---------------------------------------------------------------------------

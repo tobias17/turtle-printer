@@ -3,13 +3,12 @@ Mesa / Badlands Floating Island Generator for Minecraft
 ============================================================
 
 A badlands-mesa island variant: a red sand crust over a solid orange-
-terracotta cap, then many thin bands of terracotta (like real badlands
-cliffs) into the plain rock core every island theme shares underneath. The
-color bands themselves are ported from vanilla Minecraft's actual
-generation algorithm (decompiled BadlandsSurfaceBuilder.generateBands: a
-plain terracotta backdrop peppered with single-block orange flecks, a
-handful of randomly-placed yellow/brown/red runs, and a few thin white
-lines each with a 50/50 chance of a light-gray fleck beside them - see
+terracotta cap, then thin bands of terracotta (like real badlands cliffs)
+into the plain rock core every island theme shares underneath. The color
+bands themselves are ported from vanilla Minecraft's actual generation
+algorithm (decompiled BadlandsSurfaceBuilder.generateBands: a plain
+terracotta backdrop peppered with single-block orange flecks, a handful of
+randomly-placed yellow/red runs, and a few thin white accent lines - see
 _generate_clay_bands), cycling every CLAY_BAND_HEIGHT blocks exactly like
 vanilla's own 64-block-tall repeat. Picking that band from a column's
 absolute depth below the crust (not its own local depth fraction) is what
@@ -18,14 +17,15 @@ whole formation regardless of how deep any one column's own taper reaches
 - real cliff-band striping, not diagonal shading. The underside is
 additionally quantized into a handful of bold stacked shelves (independent
 of the fine color bands), so the silhouette itself reads as a stepped
-canyon/plateau, and the terracotta occasionally exposes a fleck of gold
-ore, a classic eroded-badlands detail. The top itself stays a clean flat
-plateau (like every other theme) with nothing standing on it by default;
-dead bushes and the occasional cactus only appear with --decorate-top. The
+canyon/plateau. The top itself stays a clean flat plateau (like every
+other theme) with nothing standing on it - real badlands are barren, so
+unlike its sibling theme there's no top decoration at all here, keeping
+the palette to 7 blocks (see AGENTS.md's island design rules). The
 underside sheds bare terracotta shards instead of roots or icicles.
 
 This is desert.py's dramatic sibling - see that file for the plain,
-smoothly-tapered dune version of the same crust-to-core idea.
+smoothly-tapered dune version of the same crust-to-core idea (and for the
+dead bushes/cacti this theme deliberately omits).
 
 Shares its silhouette/taper/drip machinery with the other island themes in
 generate/islands/ (see common.py) - this file only supplies the mesa-
@@ -51,7 +51,6 @@ ORANGE_CAP_RANGE = (3, 8)  # a solid orange-terracotta cap just under the
                             # crust, before the banded cycle starts - mirrors
                             # vanilla's own solid near-surface cap
 
-GOLD_ORE_CHANCE = 0.01  # sparse exposed gold ore flecks, a real badlands trait
 STONE_FADE_START = 0.82  # fraction of a column's own depth where it starts
                           # blending into the plain rock core near the bottom
 
@@ -71,10 +70,11 @@ def _generate_clay_bands(rng):
 
     Returns a CLAY_BAND_HEIGHT-length list of block names: mostly plain
     terracotta, with single-block orange flecks scattered every 2-6 blocks,
-    a handful of thicker yellow/brown/red runs dropped at random offsets
-    (each can overlap and overwrite earlier ones, exactly like vanilla), and
-    finally a few thin white accent lines with a 50/50 chance of a
-    light-gray fleck immediately above and/or below each one."""
+    a handful of thicker yellow/red runs dropped at random offsets (each
+    can overlap and overwrite earlier ones, exactly like vanilla), and
+    finally a few thin white accent lines. Vanilla also runs brown and
+    light-gray bands here; both are dropped to keep this theme's total
+    palette within the project's 7-block-per-theme cap (see AGENTS.md)."""
     bands = ["minecraft:terracotta"] * CLAY_BAND_HEIGHT
 
     y = 0
@@ -93,7 +93,6 @@ def _generate_clay_bands(rng):
                     bands[offset + dy] = block
 
     scatter_runs("minecraft:yellow_terracotta", (2, 5), (1, 3))
-    scatter_runs("minecraft:brown_terracotta", (2, 5), (2, 4))
     scatter_runs("minecraft:red_terracotta", (2, 5), (1, 3))
 
     offset = 0
@@ -102,10 +101,6 @@ def _generate_clay_bands(rng):
         if offset >= CLAY_BAND_HEIGHT:
             break
         bands[offset] = "minecraft:white_terracotta"
-        if offset > 1 and rng.random() < 0.5:
-            bands[offset - 1] = "minecraft:light_gray_terracotta"
-        if offset < CLAY_BAND_HEIGHT - 1 and rng.random() < 0.5:
-            bands[offset + 1] = "minecraft:light_gray_terracotta"
 
     return bands
 
@@ -171,7 +166,9 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
                        the terracotta gradient starts.
     num_drips / drip_density - see grass.py; here each "drip" is a hanging
                        terracotta shard.
-    decorate_top     - if True, scatters dead bushes and cacti on top.
+    decorate_top     - unused by this theme; real badlands are barren, so
+                       there's no top decoration to toggle (kept only for
+                       CLI/run_cli signature compatibility).
     decorate_underside - hanging terracotta shards on the underside. On by
                        default.
     """
@@ -208,15 +205,14 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         depth_blocks -= orange_cap
         jitter = gradient_noise[xi, zi] * 0.9 + speckle_noise[xi, zi] * 0.5
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        if t_grad > STONE_FADE_START:
-            # blend into the plain rock core near the very bottom of this
-            # column's own taper - a probability ramp (not a hard cutoff)
-            # so the transition is a ragged edge, not a razor ring.
-            fade = (t_grad - STONE_FADE_START) / (1 - STONE_FADE_START)
-            if rng.random() < fade:
-                return "minecraft:stone"
-        if rng.random() < GOLD_ORE_CHANCE:
-            return "minecraft:gold_ore"
+        # blend into the plain rock core near the very bottom of this
+        # column's own taper. The threshold itself is nudged by the same
+        # smooth per-column jitter as the band boundaries above (not a
+        # fresh per-voxel dice roll), so the transition is a wavy, eroded
+        # edge rather than a razor ring, without redrawing randomness for
+        # every voxel - see AGENTS.md rule 3 on why that distinction matters.
+        if t_grad > STONE_FADE_START + jitter * 0.02:
+            return "minecraft:stone"
         return pick_gradient(clay_bands, depth_blocks, jitter=jitter)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
@@ -241,20 +237,6 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
             r_frac_threshold=0.55, chance=0.12, length_range=(1, 3),
         )
 
-    if decorate_top:
-        # sparse dead bushes on the top surface
-        for (x, z, topY, depth, r, localR) in columns:
-            if r / localR < 0.9 and rng.random() < 0.1:
-                blocks.setdefault((x, topY + 1, z), "minecraft:dead_bush")
-
-        # a couple of cacti
-        cactus_spots = [c for c in columns if c[4] / c[5] < 0.55]
-        rng.shuffle(cactus_spots)
-        for (x, z, topY, depth, r, localR) in cactus_spots[: rng.randint(0, 3)]:
-            cactus_h = rng.randint(2, 4)
-            for dy in range(cactus_h):
-                blocks[(x, topY + 1 + dy, z)] = "minecraft:cactus"
-
     # apply world offset
     ox, oy, oz = offset
     return {(x + ox, y + oy, z + oz): b for (x, y, z), b in blocks.items()}
@@ -275,13 +257,8 @@ BLOCK_COLORS = {
     "minecraft:orange_terracotta": "#b2551f",
     "minecraft:terracotta": "#9c5148",
     "minecraft:yellow_terracotta": "#d4bb3c",
-    "minecraft:brown_terracotta": "#4a3222",
     "minecraft:white_terracotta": "#d9cfc0",
-    "minecraft:light_gray_terracotta": "#8d8579",
     "minecraft:stone": "#8a8a8a",
-    "minecraft:gold_ore": "#d4af37",
-    "minecraft:dead_bush": "#8a6a3a",
-    "minecraft:cactus": "#4a7a3a",
 }
 
 
@@ -300,7 +277,8 @@ def main():
         scene_title_fn=lambda seed: f"mesa multi-island demo scene (seed={seed})",
         num_drips_help=("number of hanging terracotta shards (default: auto-scales with the "
                          "island's rim geometry - see --drip-density)"),
-        decorate_top_help="scatter dead bushes and cacti on top (off by default)",
+        decorate_top_help="unused by this theme - real badlands are barren, kept only for "
+                           "CLI compatibility",
     )
 
 
