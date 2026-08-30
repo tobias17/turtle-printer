@@ -7,30 +7,27 @@ coral, ruins, swamp, prismarine, hive, gearworks), each sized within
 DIAMETER_RANGE. The spire doesn't get a dedicated island of its own: it's
 planted on top of the HOST_THEME (volcano) island, fixed at the origin.
 
-The other twelve are laid out in as many concentric rings as their geometry
-needs (see _ring_layout): rings are added outward until their combined
-capacity - how many max-size islands actually fit around each one with
-good gaps - covers all of them, then islands are round-robin balanced
-across just those rings so each one carries roughly its fair share rather
-than always maxing out the innermost first. Nothing about ring count or
-radii is hard-coded, so adding or removing a theme just reflows the rings.
-Every island then gets its own independent Gaussian jitter off its slot's
-nominal spot (angle, radius, and height), re-rolled if it would actually
-collide with an already-placed island, so the rings read as organic rather
-than a mechanical spoke pattern while staying guaranteed non-overlapping.
-Height is drawn uniformly between the spire's base and half its height, so
-the rings sit in the tower's lower half rather than centered on it.
+The other twelve are packed as close to the host as they can get (see
+_place_closest): each is dropped in at the smallest radius, and a random
+angle at that radius, that clears a minimum distance (island radius +
+neighbor's radius + GAP) from every island already placed - so the whole
+group pulls in tight around the spire rather than sitting at some
+precomputed ring radius, while the random angle search (several candidate
+angles are tried at each radius, and one of the valid ones is picked at
+random rather than always the first) keeps it from looking like a rigid
+spiral. Height is drawn uniformly between the spire's base and 20% of its
+height, so islands sit low, near the spire's foot.
 
-WHICH theme sits at which slot is decided separately from all of that, by
-_assign_themes_to_slots: each theme's top-platform block has a color (see
-TOP_BLOCK, sourced straight from that theme's own BLOCK_COLORS), and a
-generic local search assigns themes to the fixed slot positions to (locally)
-maximize the total color-similarity-weighted physical distance between
-every pair - i.e. push similarly-colored islands (e.g. grass's green and
-ruins' moss green) as far apart as the layout allows. That search runs with
-its own fixed internal seed, not --seed, so the assignment is identical
-across seeds - only the exact jittered position of each already-assigned
-island changes with --seed.
+The ORDER islands get placed in isn't random: each theme's top-platform
+block has a color (see TOP_BLOCK, sourced straight from that theme's own
+BLOCK_COLORS), and _order_by_color_spread arranges the placement sequence
+so similarly-colored islands (e.g. grass's green and ruins' moss green)
+place several turns apart rather than back to back - since each new island
+packs in wherever is currently closest, islands placed nearby in time tend
+to end up nearby in space, so spacing them out in time is a cheap proxy for
+spacing them out in the final layout. That search runs with its own fixed
+internal seed, not --seed, so the order is identical across seeds - only
+each island's exact packed position changes with --seed.
 
 Outputs (into --out-dir, default generate/out):
     <out>.npz    canonical Structure (numpy voxel array + Atlas) - the same
@@ -92,81 +89,42 @@ TOP_BLOCK = {
 }
 
 DIAMETER_RANGE = (100, 120)
-GAP = 6  # minimum clear void kept between any two islands' footprints (and between the host and ring 0)
+GAP = 18  # minimum clear void every pair of islands (host included) must keep between their footprints
 
-# Ring geometry is sized off the *largest possible* island (DIAMETER_RANGE's
-# max), so clearance is guaranteed regardless of what diameter actually gets
-# rolled for any given slot, and regardless of how many islands there are in
-# total - see _ring_layout, which is the only thing that decides ring
-# count/radii/per-ring occupancy, all computed from n_items alone.
-_MAX_RADIUS = DIAMETER_RANGE[1] / 2.0
-RING_GAP_FACTOR = 1.2  # extra breathing room applied to every radial gap - ring 0 to host,
-                       # and ring to ring - beyond the bare minimum clearance
+RADIUS_SEARCH_STEP = 6      # how far the search radius grows per failed sweep of _place_closest
+ANGLE_SAMPLES_PER_STEP = 32  # random angles probed at each search radius
 
-RADIUS_STD = 20      # Gaussian jitter off each slot's nominal radius
-ANGLE_STD_DEG = 8     # ...and off its nominal angle
-MAX_PLACEMENT_TRIES = 200  # re-roll jitter this many times before falling back to the exact slot
-
-ASSIGNMENT_SEED = 12345  # fixed on purpose - see _assign_themes_to_slots
+ASSIGNMENT_SEED = 12345  # fixed on purpose - see _order_by_color_spread
 
 
-def _ring_capacity(radius, item_radius=_MAX_RADIUS, gap=GAP):
-    """How many items of radius `item_radius` fit evenly spaced around a
-    circle of this `radius`, keeping at least `gap` clearance between
-    neighbors - the exact circle-packing bound (chord length 2*R*sin(pi/k)
-    must clear 2*item_radius+gap), not a circumference/spacing
-    approximation, which overshoots at the small counts inner rings have."""
-    clearance = item_radius + gap / 2.0
-    if radius <= clearance:
-        return 1
-    return max(1, math.floor(math.pi / math.asin(min(1.0, clearance / radius))))
-
-
-def _ring_layout(n_items):
-    """Dynamically lays out `n_items` slots - nominal (radius, angle_deg) -
-    into as many concentric rings as needed. Nothing about ring count,
-    radii, or per-ring occupancy is hard-coded, so adding or removing
-    island themes (changing n_items) just works:
-
-      1. Rings are added outward, one at a time (radius growing by a fixed
-         step each time), accumulating each new ring's capacity
-         (_ring_capacity) until the running total covers n_items.
-      2. Items are then distributed across just those rings by round-robin
-         (repeatedly filling whichever ring currently holds the fewest,
-         skipping any already at its capacity) - this balances the
-         per-ring counts as evenly as their geometry allows, rather than
-         always maxing out the inner rings first and leaving outer ones
-         sparse.
-
-    Each ring's start angle is staggered half a slot from the ring before
-    it, so slots don't all line up along the same spokes."""
-    ring0_radius = (_MAX_RADIUS + _MAX_RADIUS + GAP) * RING_GAP_FACTOR  # clears the host
-    ring_spacing = (2 * _MAX_RADIUS + GAP) * RING_GAP_FACTOR            # clears the ring before it
-
-    radii, capacities, covered = [], [], 0
-    while covered < n_items:
-        radius = ring0_radius + len(radii) * ring_spacing
-        cap = _ring_capacity(radius)
-        radii.append(radius)
-        capacities.append(cap)
-        covered += cap
-
-    counts = [0] * len(radii)
-    for _ in range(n_items):
-        i = min((i for i in range(len(radii)) if counts[i] < capacities[i]), key=lambda i: counts[i])
-        counts[i] += 1
-
-    slots = []
-    for ring_i, (radius, count) in enumerate(zip(radii, counts)):
-        step = 360.0 / count
-        stagger = (step / 2.0) * (ring_i % 2)
-        for k in range(count):
-            slots.append((radius, stagger + k * step))
-    return slots
+def _place_closest(rng, radius_extent, placed):
+    """Finds a spot for a new island of this radius as close to the origin
+    as the min-distance rule (>= its radius + a neighbor's radius + GAP,
+    against every already-placed island) allows: starting from a radius
+    that could at best clear the single largest already-placed neighbor, it
+    probes ANGLE_SAMPLES_PER_STEP random angles, collects every one that
+    actually clears ALL of them, and randomly picks among those - only
+    stepping the search radius out by RADIUS_SEARCH_STEP and trying again
+    if none of them do. So islands end up as close in as the packing
+    genuinely allows, with the randomness coming from which valid angle (of
+    however many exist at that radius) gets picked, not from overshooting
+    outward. Always terminates - a large enough radius trivially clears
+    everything already placed."""
+    dist = radius_extent + GAP + max(pr for _, _, pr in placed)
+    while True:
+        candidates = []
+        for _ in range(ANGLE_SAMPLES_PER_STEP):
+            angle = rng.uniform(0, 360)
+            x, z = dist * math.cos(math.radians(angle)), dist * math.sin(math.radians(angle))
+            if all(math.hypot(x - px, z - pz) >= radius_extent + pr + GAP for px, pz, pr in placed):
+                candidates.append((x, z, angle))
+        if candidates:
+            return rng.choice(candidates) + (dist,)
+        dist += RADIUS_SEARCH_STEP
 
 
 # ---------------------------------------------------------------------------
-# Slot assignment: spread similarly-colored tops apart
+# Placement order: spread similarly-colored tops apart in time
 # ---------------------------------------------------------------------------
 
 def _hex_to_rgb(hex_color):
@@ -180,48 +138,39 @@ def _color_dist(hex_a, hex_b):
     return math.sqrt((ra - rb) ** 2 + (ga - gb) ** 2 + (ba - bb) ** 2)
 
 
-def _color_similarity(hex_a, hex_b):
-    return 1.0 / (_color_dist(hex_a, hex_b) + 1.0)
-
-
-def _assign_themes_to_slots(themes, colors, slots, iterations=8000):
-    """Generic theme -> slot assignment: (locally) maximizes, over every
-    pair of islands, color_similarity(a, b) * physical_distance(slot_a,
-    slot_b) - i.e. rewards putting similarly-colored islands far apart and
-    is indifferent to how far apart dissimilar ones end up. A textbook
-    quadratic-assignment-style hill climb (random swap, keep it if the
-    score doesn't drop) starting from a fixed shuffle - deterministic (same
-    result every run) because it uses its own ASSIGNMENT_SEED rather than
-    the scene's --seed, which only controls each island's exact jitter
-    around whatever slot it lands in here."""
-    positions = [(r * math.cos(math.radians(a)), r * math.sin(math.radians(a))) for r, a in slots]
+def _order_by_color_spread(themes, colors, iterations=4000):
+    """Sequence order for `themes` that keeps similarly-colored ones apart
+    in placement order: starts from a fixed shuffle, then hill-climbs by
+    swapping random pairs whenever it doesn't increase the total "nearby
+    closeness" penalty (lower is better - a sum of 1/(distance+1) over
+    every pair within 3 positions of each other in the sequence). Runs with
+    its own fixed ASSIGNMENT_SEED, not the scene's --seed, so the order is
+    always the same; only each island's exact packed position (see
+    _place_closest) is controlled by --seed."""
     rng = random.Random(ASSIGNMENT_SEED)
     order = list(themes)
     rng.shuffle(order)
     n = len(order)
+    window = min(3, n - 1)
 
-    def dist(i, j):
-        return math.hypot(positions[i][0] - positions[j][0], positions[i][1] - positions[j][1])
-
-    def score():
+    def penalty():
         return sum(
-            _color_similarity(colors[order[i]], colors[order[j]]) * dist(i, j)
-            for i in range(n) for j in range(i + 1, n)
+            1.0 / (_color_dist(colors[order[i]], colors[order[(i + d) % n]]) + 1.0)
+            for i in range(n) for d in range(1, window + 1)
         )
 
-    current = score()
+    current = penalty()
     for _ in range(iterations):
         i, j = rng.randrange(n), rng.randrange(n)
         if i == j:
             continue
         order[i], order[j] = order[j], order[i]
-        s = score()
-        if s >= current:
-            current = s
+        p = penalty()
+        if p <= current:
+            current = p
         else:
             order[i], order[j] = order[j], order[i]  # revert
-
-    return {theme: slots[i] for i, theme in enumerate(order)}
+    return order
 
 
 # ---------------------------------------------------------------------------
@@ -265,34 +214,18 @@ def build_scene(seed=1):
     # island's flat top (topY=0, so the surface to build on is y=1).
     spire_offset = (-spire.CX, 1, -spire.CY)
     blocks.update(structure_to_blocks(spire_structure, offset=spire_offset))
-    height_lo, height_hi = spire_offset[1], spire_offset[1] + spire_height / 2
+    height_lo, height_hi = spire_offset[1], spire_offset[1] + spire_height * 0.2
 
     ring_themes = [t for t in ALL_THEMES if t != HOST_THEME]
     top_colors = {theme: THEME_MODULES[theme].BLOCK_COLORS[TOP_BLOCK[theme]] for theme in ring_themes}
-    slots = _ring_layout(len(ring_themes))
-    assignment = _assign_themes_to_slots(ring_themes, top_colors, slots)
-    # innermost ring first, so each new island has the fullest picture of
-    # what's already down when it checks for collisions
-    ordered = sorted(assignment.items(), key=lambda kv: kv[1][0])
+    order = _order_by_color_spread(ring_themes, top_colors)
 
-    for i, (theme, (nom_radius, nom_angle)) in enumerate(ordered):
+    for i, theme in enumerate(order):
         module = THEME_MODULES[theme]
         diameter = round(rng.uniform(*DIAMETER_RANGE))
         radius_extent = diameter / 2.0
 
-        for _ in range(MAX_PLACEMENT_TRIES):
-            angle = nom_angle + rng.gauss(0, ANGLE_STD_DEG)
-            dist = nom_radius + rng.gauss(0, RADIUS_STD)
-            x, z = dist * math.cos(math.radians(angle)), dist * math.sin(math.radians(angle))
-            if all(math.hypot(x - px, z - pz) >= radius_extent + pr + GAP for px, pz, pr in placed):
-                break
-        else:
-            # The exact nominal slot is guaranteed clear by construction
-            # (ring radii are spaced for the largest possible island), so
-            # falling back to it - jitter-free, this once - can't collide.
-            angle, dist = nom_angle, nom_radius
-            x, z = dist * math.cos(math.radians(angle)), dist * math.sin(math.radians(angle))
-            print(f"  note: used the exact ring slot for {theme} (jitter kept colliding)")
+        x, z, angle, dist = _place_closest(rng, radius_extent, placed)
 
         placed.append((x, z, radius_extent))
         y = round(rng.uniform(height_lo, height_hi))
@@ -305,7 +238,7 @@ def build_scene(seed=1):
         )
         blocks.update(island_blocks)
         print(f"  {theme:<10} d={diameter:<4} pos=({offset[0]:>5}, {offset[1]:>4}, {offset[2]:>5})  "
-              f"ring_r={nom_radius:.0f} dist={dist:.0f} angle={angle:.0f}deg")
+              f"dist={dist:.0f} angle={angle:.0f}deg")
 
     return blocks
 
