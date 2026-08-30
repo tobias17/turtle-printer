@@ -26,6 +26,35 @@ maturity:
    **not yet wired into the mesh-to-turtle pipeline** — that integration is
    deliberately deferred until the generation tooling itself settles. Don't
    assume `printer_tobi/slice.py` can currently consume their output.
+3. **Direct-to-world-save import (`world_import/`), for quick visual
+   testing.** `world_import/import_structure.py` writes a generated
+   `.npz` Structure straight into a real Minecraft world save via
+   `amulet-core` (see `import_structure.py`'s own docstring for the
+   chunk-vectorized read/write approach) — this is separate from both
+   pipelines above; it's a dev/test shortcut for seeing a generated
+   structure in-game immediately, not part of the eventual turtle-build
+   pipeline. `world_import/config.json` (gitignored — copy
+   `config.example.json`) holds the machine-specific save path,
+   dimension, paste origin, and clear-region size; never hardcode a save
+   path elsewhere in this repo. The target here so far is **Minecraft
+   1.12.2 (MeatballCraft, Forge-modded)** — a materially different block
+   storage format than everything `generate/` was originally written
+   against: pre-1.13 blocks are a per-world-assigned numeric id (each
+   save's own `level.dat` → `FML.Registries` → `"minecraft:blocks"` for a
+   modded/Forge world) plus a 4-bit metadata nibble, not today's
+   flattened per-variant names, and a number of blocks `generate/` themes
+   use (blackstone, deepslate, mud, moss, honeycomb, amethyst, coral,
+   mangrove, ...) didn't exist at all pre-1.13. `world_import/
+   block_compat.py`'s `LEGACY_MAP` is the single, hand-curated place that
+   translates every block name any `generate/` module can produce into a
+   real 1.12.2 block+meta (official pre-flattening conversions where one
+   exists, a deliberately chosen vanilla substitute where none does) —
+   `generate/`'s own files keep using modern, descriptive names
+   throughout and are never edited for this; a new theme/block only needs
+   a new `LEGACY_MAP` entry. `translate_block()` raises on anything not
+   in that table by design (no automatic/guessed fallback) — if you add a
+   block to any `generate/` module, add its mapping to `LEGACY_MAP` too,
+   or importing will fail loudly rather than placing the wrong block.
 
 ## `generate/` conventions
 

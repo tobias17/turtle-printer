@@ -11,3 +11,9 @@ opencv-python
 
 # generate/*.py: optional .schem export for loading into a game save
 mcschematic
+
+# world_import/*.py: import a generated Structure directly into a real
+# world save. Pulls in numpy<2 (pins numpy down from whatever's otherwise
+# installed) - everything else in this file has been confirmed to still
+# work fine under that older numpy.
+amulet-core

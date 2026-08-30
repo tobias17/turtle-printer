@@ -1,0 +1,7 @@
+{
+    "save_path": "C:\\Users\\you\\AppData\\Roaming\\PrismLauncher\\instances\\YourInstance\\minecraft\\saves\\YourWorld",
+    "dimension": "minecraft:overworld",
+    "origin": [0, 70, 0],
+    "clear_size": [150, 100, 150],
+    "clear_margin": 4
+}
