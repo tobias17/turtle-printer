@@ -97,7 +97,7 @@ TOP_BLOCK = {
     "grass": "minecraft:grass_block", "volcano": "minecraft:blackstone",
     "snow": "minecraft:snow_block", "desert": "minecraft:sand",
     "mushroom": "minecraft:mycelium", "bones": "minecraft:bone_block",
-    "crystal": "minecraft:calcite", "coral": "minecraft:sand",
+    "crystal": "minecraft:purpur_block", "coral": "minecraft:sand",
     "ruins": "minecraft:moss_block", "swamp": "minecraft:mud",
     "prismarine": "minecraft:prismarine_bricks", "hive": "minecraft:honeycomb_block",
 }

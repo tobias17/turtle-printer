@@ -89,8 +89,31 @@ def _cap_and_stem(blocks, col_bottom, columns, rng, max_depth):
     columns[:] = new_columns
 
 
+GILL_COUNT = 26  # number of radiating gill lines traced across the cap underside
+
+
+def _gill_texture(blocks, col_bottom, columns):
+    """Traces thin radiating gill lines (in STEM_BLOCK, the same white as
+    the stem) across the flat cap underside carved by _cap_and_stem -
+    real mushroom gills are thin plates radiating out from the stem to the
+    rim, not the random scattered vines/drips every other theme's
+    underside decoration produces. Only recolors the single exposed bottom
+    face of each cap column, so it's a texture on the existing flat
+    surface, not a shape change.
+    """
+    for (x, z, topY, depth, r, localR) in columns:
+        frac = r / localR if localR else 1.0
+        if frac < 0.18:
+            continue  # stem region, no gills
+        theta = math.atan2(z, x) % (2 * math.pi)
+        bucket = theta / (2 * math.pi) * GILL_COUNT
+        if abs(bucket - round(bucket)) < 0.14:
+            bottomY, _, _, _ = col_bottom[(x, z)]
+            blocks[(x, bottomY, z)] = STEM_BLOCK
+
+
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
-                     num_drips=None, drip_density=0.11, flat_top=True, decorate_top=False,
+                     num_drips=None, drip_density=0.04, flat_top=True, decorate_top=False,
                      decorate_underside=True, offset=(0, 0, 0)):
     """Returns dict {(x, y, z): "minecraft:block_id"} for one fungal
     island, positioned with its center at `offset`.
@@ -100,12 +123,14 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
                        Y level. Outline is still irregular.
     top_thickness_range - (min, max) number of mycelium-crust layers,
                        before the dirt/mud gradient starts.
-    num_drips / drip_density - see grass.py; here each "drip" is a hanging
-                       root tendril, occasionally glow-tipped.
+    num_drips / drip_density - see grass.py; here each "drip" is a sparse
+                       hanging root tendril, occasionally glow-tipped.
     decorate_top     - if True, scatters small mushrooms and grows a couple
                        of giant mushrooms on top.
-    decorate_underside - hanging root tendrils on the underside. On by
-                       default.
+    decorate_underside - a few root tendrils plus a light rim moss fringe.
+                       On by default. The cap's radiating gill lines
+                       (_gill_texture) always run - they're the cap's basic
+                       underside texture, not optional decoration.
     """
     size, half, radius = common.grid_dims(diameter)
 
@@ -135,22 +160,29 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     # reshape the smooth cone into a flat cap + central stem (recolored solid
     # white) - see _cap_and_stem above.
     _cap_and_stem(blocks, col_bottom, columns, rng, max_depth)
+    # trace radiating gill lines across the flat cap underside - see
+    # _gill_texture above. Unconditional, like _cap_and_stem: this is the
+    # cap's basic underside texture, not optional decoration on top of it.
+    _gill_texture(blocks, col_bottom, columns)
 
     if decorate_underside:
-        # root tendrils are their own palette - muddy mangrove roots, with
-        # a rare glowing shroomlight tip instead of a plain end.
+        # a few root tendrils plunging from the stem base, with a rare
+        # glowing shroomlight tip - kept sparse so they read as a handful of
+        # roots reaching for the ground, not a scatter of random bits
+        # competing with the gill lines.
         def drip_block(rng, t, is_tip):
             return "minecraft:shroomlight" if is_tip else "minecraft:muddy_mangrove_roots"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
 
-        # a denser curtain of vines than the other themes - a swamp canopy's
-        # hanging roots and moss are thick, not sparse.
+        # a light moss fringe at the true rim - sparse, like the other
+        # themes' vine/root fringes, not a dense curtain fighting the gills
+        # for attention.
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
             rim_block_fn=lambda rng: "minecraft:vine",
-            r_frac_threshold=0.45, chance=0.32, length_range=(3, 8),
+            r_frac_threshold=0.55, chance=0.12, length_range=(2, 4),
         )
 
     if decorate_top:

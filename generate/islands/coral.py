@@ -147,11 +147,14 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
                        Y level. Outline is still irregular.
     top_thickness_range - (min, max) number of sand-crust layers, before
                        the sandstone/calcite/clay gradient starts.
-    num_drips / drip_density - see grass.py; here each "drip" is a hanging
-                       coral spur.
+    num_drips / drip_density - unused by this theme; coral colony reach is
+                       shaped by _reef_branches' clumped noise instead of
+                       common.generate_drips (kept only for CLI/run_cli
+                       signature compatibility).
     decorate_top     - if True, scatters sea pickles and kelp on top.
-    decorate_underside - coral-branch shaping plus hanging coral spurs and
-                       kelp fringe on the underside. On by default.
+    decorate_underside - kelp fringe on the underside, draped from the
+                       true rim. On by default. Coral-branch shaping itself
+                       always runs (it's the island's basic silhouette).
     """
     size, half, radius = common.grid_dims(diameter)
 
@@ -181,14 +184,11 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
     _reef_branches(blocks, col_bottom, columns, size, half, seed, rng, max_depth, coral_colors)
 
     if decorate_underside:
-        def drip_block(rng, t, is_tip):
-            return coral_colors[0] if is_tip else "minecraft:sandstone"
-
-        common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
-                               num_drips, drip_density, drip_block)
-
         # kelp fringe draped from the rim (replaces the other themes'
-        # vines/icicles/roots)
+        # vines/icicles/roots). No common.generate_drips here - the reef
+        # branch colonies above are the underside's whole shape; layering an
+        # evenly-spaced drip skirt on top buried them under a forest of thin
+        # single-column spikes and made the reef read as generic dripstone.
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
             rim_block_fn=lambda rng: "minecraft:kelp",
@@ -248,8 +248,8 @@ def main():
         block_colors=BLOCK_COLORS,
         single_title_fn=lambda diameter, seed: f"coral reef floating island (d={diameter}, seed={seed})",
         scene_title_fn=lambda seed: f"coral reef multi-island demo scene (seed={seed})",
-        num_drips_help=("number of hanging coral spurs (default: auto-scales with the "
-                         "island's rim geometry - see --drip-density)"),
+        num_drips_help="unused by this theme - coral colony reach is shaped by clumped noise "
+                        "instead, kept only for CLI compatibility",
         decorate_top_help="scatter sea pickles and kelp on top (off by default)",
     )
 
