@@ -176,7 +176,7 @@ theme must clear, written down so that doesn't happen again:
    - it regenerates THE canonical rollup (every theme at every standard
      diameter, one consolidated grid image, columns = theme, rows =
      diameter) always at the same fixed path,
-     `generate/out/renders/rollup.png`, so a regression in one theme, or in
+     `generate/output/rollup.png`, so a regression in one theme, or in
      an unrelated theme you didn't mean to touch, is visible immediately.
      That path and that grid shape are the single source of truth for "the
      rollup" - the script itself refuses to run a partial/non-standard
@@ -198,8 +198,14 @@ theme must clear, written down so that doesn't happen again:
   --debug`; mcschematic, optional, for `.schem` export). A `.venv/` is
   expected locally (gitignored) — there was no dependency tracking before,
   so don't assume any of this is globally installed.
-- `generate/out/` (and any `**/out/*`) is gitignored — it's scratch output
-  from running the generators, not build artifacts to commit.
+- `generate/output/` (and any `**/output/*`) is gitignored — it's scratch
+  output from running the generators, not build artifacts to commit.
+  `generate/output/rollup.png` and `generate/output/scene.png` are the two
+  canonical, "look at this" outputs and live directly in `generate/output/`;
+  everything else (single-theme dev renders, spire/tree standalone renders,
+  rollup's per-cell cache, throwaway debug renders) belongs under
+  `generate/output/tmp/` and is not meant to stay tidy or be manually
+  curated.
 
 ## Working style for this repo
 
@@ -210,14 +216,14 @@ theme must clear, written down so that doesn't happen again:
   change generation or rendering code, actually run it and look at the
   output PNG before calling it done.
 - **Don't run ad hoc `python -c "..."` one-liners directly.** Write the
-  script to `generate/out/tmp.py` instead (gitignored scratch space) and run
-  it by invoking the venv's Python **directly** on that one file:
-  `c:\Users\tobia\Documents\repos\turtle-printer\.venv\Scripts\python.exe c:\Users\tobia\Documents\repos\turtle-printer\generate\out\tmp.py`
-  - Reuse that same `generate/out/tmp.py` path for every throwaway/diagnostic
-    script in a session — overwrite it each time rather than inventing new
-    filenames (`test.py`, `hires_test.py`, ...). One well-known scratch file
-    is easy for the user to glance at and approve; a new name each time is
-    not.
+  script to `generate/output/tmp/tmp.py` instead (gitignored scratch space)
+  and run it by invoking the venv's Python **directly** on that one file:
+  `c:\Users\tobia\Documents\repos\turtle-printer\.venv\Scripts\python.exe c:\Users\tobia\Documents\repos\turtle-printer\generate\output\tmp\tmp.py`
+  - Reuse that same `generate/output/tmp/tmp.py` path for every
+    throwaway/diagnostic script in a session — overwrite it each time rather
+    than inventing new filenames (`test.py`, `hires_test.py`, ...). One
+    well-known scratch file is easy for the user to glance at and approve; a
+    new name each time is not.
   - Run it as a single, plain command: no `cd ... &&`, no `source
     .venv/Scripts/activate &&`, no chaining with other commands. Use the
     absolute path to `python.exe` and the absolute path to `tmp.py` so `cd`
@@ -230,5 +236,5 @@ theme must clear, written down so that doesn't happen again:
   into one command. Let the user drive git themselves unless they
   explicitly ask you to stage/commit.
 - **Don't delete gitignored output for "cleanliness."** If it's under
-  `generate/out/` or similar, leave it — it's not tracked and not in the
+  `generate/output/` or similar, leave it — it's not tracked and not in the
   user's way.

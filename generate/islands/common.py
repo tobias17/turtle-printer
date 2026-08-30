@@ -406,7 +406,8 @@ def build_arg_parser(description, out_default, num_drips_help, decorate_top_help
     ap.add_argument("--no-underside-decor", action="store_true", help=no_underside_help)
     ap.add_argument("--out", type=str, default=out_default, help="output file prefix")
     ap.add_argument("--out-dir", type=Path, default=None, dest="out_dir",
-                     help="directory for outputs (default: generate/out)")
+                     help="directory for outputs (default: generate/output/tmp - "
+                          "these are standalone dev-iteration renders, not canonical output)")
     ap.add_argument("--scene", action="store_true",
                      help="generate a multi-island demo scene instead of a single island")
     ap.add_argument("--schem", action="store_true",
@@ -424,7 +425,8 @@ def run_cli(description, out_default, generate_island_fn, generate_scene_fn,
     preview PNG (+ optional .schem)."""
     ap = build_arg_parser(description, out_default, num_drips_help, decorate_top_help)
     args = ap.parse_args()
-    out_dir = args.out_dir if args.out_dir is not None else Path(__file__).resolve().parent.parent / "out"
+    out_dir = (args.out_dir if args.out_dir is not None
+               else Path(__file__).resolve().parent.parent / "output" / "tmp")
 
     if args.scene:
         blocks = generate_scene_fn(seed=args.seed)

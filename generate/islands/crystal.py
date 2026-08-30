@@ -3,14 +3,18 @@ Crystal Geode Floating Island Generator for Minecraft
 =========================================================
 
 A crystal-cave island variant, built to match a real geode photo rather
-than reusing this project's usual dripstone-shaped underside: a lavender-
-purple stone crust on top, and a handful of dense amethyst crystal PATCHES
-hanging underneath, each one a tight bouquet of many individual hexagonal
+than reusing this project's usual dripstone-shaped underside: the whole
+underside is ONE dense amethyst crystal MASS spanning nearly the entire
+island - the reference geode photo itself, scaled up to the island's
+diameter and flipped upside down (the thin dark rock matrix on top, the
+crystal fan hanging point-down below it), not a normal island with a few
+small crystal patches bolted on. The mass is many individual hexagonal
 crystal points - a straight-sided shaft topped with a hexagonal pyramid
-point, not a cone that tapers along its whole length - fanned out from a
-shared base with a pale "rind" ring and druse fuzz where they meet the
-surrounding rock, the way an actual amethyst geode looks. See
-_crystal_patch/_carve_crystal_point below for the shape itself; only the
+point, not a cone that tapers along its whole length - packed edge to edge
+over a jittered hex lattice, tallest near the center and shorter/leaning
+outward toward the rim, with a pale "rind" ring and druse fuzz where the
+crystals meet the surrounding rock, the way an actual amethyst geode looks.
+See _crystal_mass/_carve_crystal_point below for the shape itself; only the
 island's overall taper/silhouette comes from common.carve_columns.
 
 Usage:
@@ -63,33 +67,48 @@ def pick_crust(rng):
 
 
 # ---------------------------------------------------------------------------
-# Underside: a shallow rock floor with dense hexagonal-crystal patches
+# Underside: a shallow rock floor with one dense hexagonal-crystal mass
 # ---------------------------------------------------------------------------
 #
 # Built from scratch off the reference geode photo, not by reusing/tuning
 # this project's dripstone-drip machinery:
 #   1. A shallow flat rock floor - the exposed matrix a real geode splits
 #      open along.
-#   2. A handful of dense crystal PATCHES on that floor. Each patch is many
+#   2. ONE dense crystal MASS covering nearly the whole floor - the
+#      reference photo's entire crystal fan, scaled to the island and
+#      flipped upside down, not a handful of small patches. It's many
 #      individual hexagonal crystal points (see _carve_crystal_point)
-#      packed close together, tallest at the patch's center and shorter
-#      toward its edge, each leaning slightly outward the further it is
-#      from center - together that's what makes a patch read as one
-#      radiating bouquet instead of a forest of parallel rods.
-#   3. A pale stone "rind" ring around each patch plus fine druse speckle
-#      at the crystals' bases, where the reference photo's crystals meet
-#      the surrounding rock.
+#      packed edge to edge over a jittered hex lattice, tallest near the
+#      mass's center and shorter toward its (irregular, noise-warped) rim,
+#      each leaning outward the further it is from center - together
+#      that's what makes it read as one huge radiating bouquet instead of
+#      a forest of parallel rods.
+#   3. A pale stone "rind" ring around the mass plus fine druse speckle at
+#      the crystals' bases, where the reference photo's crystals meet the
+#      surrounding rock.
 
-FLOOR_DEPTH_RANGE = (5, 7)          # the flat rock floor the patches grow from
+FLOOR_DEPTH_RANGE = (5, 7)          # the flat rock floor the crystal mass grows from
 
-PATCH_COUNT_RANGE = (5, 8)          # number of crystal patches on the island
-PATCH_RADIUS_FRAC = (0.15, 0.68)    # patches sit within this band of the island's radius
-PATCH_FOOTPRINT_RANGE = (6.0, 10.0) # footprint radius of one patch
-PATCH_HEIGHT_RANGE = (11, 20)       # tallest crystal point at a patch's center
-POINT_RADIUS_RANGE = (1.1, 2.4)     # a single crystal point's shaft radius
+MASS_FOOTPRINT_FRAC = (0.80, 0.94)  # crystal mass radius, as a fraction of the island's radius
+MASS_OUTLINE_AMP = 0.12             # +/- fractional wobble in the mass's outline per angle
+# A real amethyst point's shaft radius, as a fraction of the island's diameter - scaled off the
+# island rather than fixed, so bigger islands grow chunkier, more clearly-faceted crystals instead
+# of the same tiny points just packed in denser. Clamped to POINT_RADIUS_MIN/MAX so this stays a
+# handful of large, individually-readable crystals rather than a fuzz of tiny ones (the previous,
+# too-dense look) at either end of the size range.
+POINT_RADIUS_FRAC = (0.022, 0.05)
+POINT_RADIUS_MIN = 2.2
+POINT_RADIUS_MAX = 7.0
+# A crystal's height as a multiple of its own width (2x radius) - real quartz/amethyst points read
+# as a stout hexagonal prism, not a thin needle, so this stays a modest multiple instead of scaling
+# height off the island independently of how thick the point actually is.
+HEIGHT_TO_WIDTH_RANGE = (3.5, 6.0)
+# Target center-to-center spacing between points, as a multiple of their radius - the main knob for
+# "how many crystals": wide spacing means fewer, clearly separate points instead of a packed hedge.
+POINT_SPACING_FACTOR = 2.6
 TIP_FRAC = 0.4                      # fraction of a point's height spent narrowing to its tip
-LEAN_STRENGTH = 0.55                # max sideways drift per block of height, at a patch's outer edge
-RIND_BLOCK = "minecraft:calcite"    # pale stone ring around a patch, like a geode's outer shell
+LEAN_STRENGTH = 0.6                 # max sideways drift per block of height, at the mass's outer edge
+RIND_BLOCK = "minecraft:calcite"    # pale stone ring around the mass, like a geode's outer shell
 
 
 def _hex_radius(dx, dz):
@@ -137,52 +156,138 @@ def _carve_crystal_point(blocks, rng, cx, cz, top_y, height, radius, lean_x, lea
         z += lean_z
 
 
-def _crystal_patch(blocks, rng, cx0, cz0, floor_y):
-    """Grows one dense crystal patch: many individual hexagonal points
-    (_carve_crystal_point) scattered within a circular footprint, tallest
-    near the middle and shorter toward the edge so the whole patch reads as
-    one domed, radiating bouquet - plus a pale rind ring and druse speckle
+def _outline_fn(rng, base_radius, amp, n_harmonics=3):
+    """Returns a callable theta -> radius tracing an irregular, lumpy
+    outline around `base_radius` (a few random sine harmonics, like
+    common.carve_columns' own island silhouette) - used so the crystal
+    mass's own rim is organically warped instead of a perfect circle,
+    matching the reference photo's ragged crystal crown."""
+    harmonics = [(rng.randint(2, 5), rng.uniform(0, 2 * math.pi)) for _ in range(n_harmonics)]
+
+    def outline(theta):
+        r = base_radius
+        for k, phase in harmonics:
+            r *= 1 + (amp / n_harmonics) * math.sin(k * theta + phase)
+        return r
+
+    return outline
+
+
+def _crystal_mass(blocks, rng, size, half, diameter, col_bottom):
+    """Grows ONE dense crystal mass spanning nearly the whole underside:
+    many individual hexagonal points (_carve_crystal_point) packed edge to
+    edge over a jittered hex lattice within an irregular (_outline_fn)
+    footprint, tallest near the island's center and shorter/leaning outward
+    toward the rim - this is the reference geode photo's entire crystal fan,
+    not a small bolted-on patch - plus a pale rind ring and druse speckle
     where it meets the surrounding rock, matching the reference photo's
-    geode shell/base."""
-    footprint = rng.uniform(*PATCH_FOOTPRINT_RANGE)
-    max_height = rng.uniform(*PATCH_HEIGHT_RANGE)
-    n_points = rng.randint(26, 44)
+    geode shell/base.
 
-    for _ in range(n_points):
-        angle = rng.uniform(0, 2 * math.pi)
-        rad_frac = math.sqrt(rng.random())  # uniform over the disc
-        rad = footprint * rad_frac
-        px = cx0 + rad * math.cos(angle)
-        pz = cz0 + rad * math.sin(angle)
-        centrality = 1.0 - rad_frac  # 1.0 at the patch center, 0.0 at its rim
+    Each point attaches at its own column's actual floor height (read
+    straight from col_bottom, already flattened by _flatten_floor), so the
+    mass follows the floor's natural unevenness near the island's ragged
+    edge instead of assuming one constant floor level.
+    """
+    approx_radius = max(1.0, (size - 6) / 2.0)
+    footprint = approx_radius * rng.uniform(*MASS_FOOTPRINT_FRAC)
+    outline = _outline_fn(rng, footprint, MASS_OUTLINE_AMP)
+    base_radius = min(POINT_RADIUS_MAX, max(POINT_RADIUS_MIN, diameter * rng.uniform(*POINT_RADIUS_FRAC)))
+    point_spacing = base_radius * POINT_SPACING_FACTOR
+    height_noise = common.value_noise_2d(size, max(6, size // 10), rng.randint(0, 1_000_000))
 
-        height = max(5, round(max_height * (0.35 + 0.65 * centrality) * rng.uniform(0.85, 1.15)))
-        radius = rng.uniform(*POINT_RADIUS_RANGE) * (0.7 + 0.3 * centrality)
+    def floor_y_at(px, pz):
+        key = (round(px), round(pz))
+        entry = col_bottom.get(key)
+        if entry is not None:
+            return entry[0]
+        for rr in range(1, 4):
+            for ddx in range(-rr, rr + 1):
+                for ddz in range(-rr, rr + 1):
+                    if max(abs(ddx), abs(ddz)) != rr:
+                        continue
+                    entry = col_bottom.get((key[0] + ddx, key[1] + ddz))
+                    if entry is not None:
+                        return entry[0]
+        return None
 
-        lean_mag = LEAN_STRENGTH * (1.0 - centrality) * rng.uniform(0.5, 1.0)
-        if rad > 0.5:
-            lean_x = (px - cx0) / rad * lean_mag
-            lean_z = (pz - cz0) / rad * lean_mag
-        else:
-            lean_x = lean_z = 0.0
+    # Jittered hex lattice over the footprint disc: tiles it evenly with far
+    # fewer points than random sampling would need for full coverage, then
+    # each point is trimmed to (and shaded by its distance within) the
+    # actual irregular outline.
+    row_h = point_spacing * 0.8660254037844386
+    n_rows = int(2 * (footprint * (1 + MASS_OUTLINE_AMP)) / row_h) + 2
+    n_cols = int(2 * (footprint * (1 + MASS_OUTLINE_AMP)) / point_spacing) + 2
+    jitter_mag = point_spacing * 0.3
 
-        _carve_crystal_point(blocks, rng, px, pz, floor_y, height, radius, lean_x, lean_z)
+    n_placed = 0
+    for ri in range(-n_rows // 2, n_rows // 2 + 1):
+        pz0 = ri * row_h
+        row_offset = (point_spacing / 2) if ri % 2 else 0.0
+        for ci in range(-n_cols // 2, n_cols // 2 + 1):
+            px0 = ci * point_spacing + row_offset
+            px = px0 + rng.uniform(-jitter_mag, jitter_mag)
+            pz = pz0 + rng.uniform(-jitter_mag, jitter_mag)
 
-    # pale rind ring, like a geode's outer shell, marking where the patch
-    # meets the plain rock floor around it
-    for a in range(64):
-        angle = a / 64 * 2 * math.pi
-        for rr in (footprint * 0.92, footprint * 1.08, footprint * 1.22):
-            bx = round(cx0 + rr * math.cos(angle))
-            bz = round(cz0 + rr * math.sin(angle))
-            if rng.random() < 0.8:
-                blocks[(bx, floor_y, bz)] = RIND_BLOCK
+            rad = math.hypot(px, pz)
+            theta = math.atan2(pz, px)
+            local_footprint = outline(theta)
+            if rad > local_footprint:
+                continue
+
+            floor_y = floor_y_at(px, pz)
+            if floor_y is None:
+                continue
+
+            xi = min(max(round(px) + half, 0), size - 1)
+            zi = min(max(round(pz) + half, 0), size - 1)
+            n = 0.5 + 0.5 * height_noise[xi, zi]  # smooth per-region variation, 0..1
+            centrality = 1.0 - rad / max(local_footprint, 1e-6)
+
+            # Radius first (real crystals vary noticeably in girth too, not just height),
+            # then height as a proportional multiple of that radius - keeps every point looking
+            # like a normal stout crystal prism instead of a thin needle, whatever size it lands at.
+            radius = base_radius * (0.6 + 0.5 * centrality) * rng.uniform(0.75, 1.25)
+            aspect = rng.uniform(*HEIGHT_TO_WIDTH_RANGE)
+            height = max(5, round(
+                radius * 2 * aspect * (0.55 + 0.45 * centrality + 0.3 * n)
+            ))
+
+            lean_mag = LEAN_STRENGTH * (1.0 - centrality) * rng.uniform(0.6, 1.0)
+            if rad > 0.5:
+                lean_x = px / rad * lean_mag
+                lean_z = pz / rad * lean_mag
+            else:
+                lean_x = lean_z = 0.0
+
+            _carve_crystal_point(blocks, rng, px, pz, floor_y, height, radius, lean_x, lean_z)
+            n_placed += 1
+
+    # pale rind, like a geode's outer shell, marking where the mass meets
+    # the plain rock floor around it - a speckled druse transition rather
+    # than a solid ring, so it reads as texture and not a painted stripe
+    for a in range(192):
+        angle = a / 192 * 2 * math.pi
+        local_footprint = outline(angle)
+        for frac in (0.88, 0.98, 1.08, 1.18, 1.28):
+            bx, bz = round(local_footprint * frac * math.cos(angle)), round(local_footprint * frac * math.sin(angle))
+            floor_y = floor_y_at(bx, bz)
+            if floor_y is None or rng.random() >= 0.45:
+                continue
+            block = common.weighted_choice(rng, [
+                (RIND_BLOCK, 0.5),
+                ("minecraft:amethyst_cluster", 0.3),
+                ("minecraft:budding_amethyst", 0.2),
+            ])
+            blocks[(bx, floor_y, bz)] = block
 
     # druse: fine crystal fuzz filling the floor between the big points
-    for _ in range(n_points * 2):
+    for _ in range(n_placed * 2):
         angle = rng.uniform(0, 2 * math.pi)
-        rad = footprint * math.sqrt(rng.random())
-        bx, bz = round(cx0 + rad * math.cos(angle)), round(cz0 + rad * math.sin(angle))
+        rad = outline(angle) * math.sqrt(rng.random())
+        bx, bz = round(rad * math.cos(angle)), round(rad * math.sin(angle))
+        floor_y = floor_y_at(bx, bz)
+        if floor_y is None:
+            continue
         block = "minecraft:amethyst_cluster" if rng.random() < 0.5 else "minecraft:budding_amethyst"
         blocks.setdefault((bx, floor_y, bz), block)
 
@@ -208,28 +313,14 @@ def _flatten_floor(blocks, col_bottom, columns, rng):
     return floor_depth
 
 
-def _crystal_underside(blocks, col_bottom, columns, size, rng):
+def _crystal_underside(blocks, col_bottom, columns, size, half, diameter, rng):
     """Post-processes the already-carved (unmodified common.carve_columns)
-    underside into a shallow rock floor with several dense hexagonal-
-    crystal patches (see _crystal_patch) spread roughly evenly around the
-    island, instead of the icicle-shaped drip skirt every other theme's
-    underside uses.
+    underside into a shallow rock floor with one dense hexagonal-crystal
+    mass covering nearly all of it (see _crystal_mass), instead of the
+    icicle-shaped drip skirt every other theme's underside uses.
     """
-    floor_depth = _flatten_floor(blocks, col_bottom, columns, rng)
-    approx_radius = max(1.0, (size - 6) / 2.0)
-
-    n_patches = rng.randint(*PATCH_COUNT_RANGE)
-    angle_offset = rng.uniform(0, 2 * math.pi)
-    for i in range(n_patches):
-        # one sector per patch, each with its own jitter, so patches spread
-        # evenly around the island instead of clumping to one side
-        angle = angle_offset + (i + rng.uniform(-0.25, 0.25)) * (2 * math.pi / n_patches)
-        rfrac = rng.uniform(*PATCH_RADIUS_FRAC)
-        tx = rfrac * approx_radius * math.cos(angle)
-        tz = rfrac * approx_radius * math.sin(angle)
-        nearest = min(columns, key=lambda c: (c[0] - tx) ** 2 + (c[1] - tz) ** 2)
-        cx, cz, topY = nearest[0], nearest[1], nearest[2]
-        _crystal_patch(blocks, rng, cx, cz, topY - floor_depth)
+    _flatten_floor(blocks, col_bottom, columns, rng)
+    _crystal_mass(blocks, rng, size, half, diameter, col_bottom)
 
 
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
@@ -288,12 +379,11 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
     )
     if decorate_underside:
-        # break the underside open into a shallow rock floor with dense
-        # hexagonal crystal patches growing out of it - see
-        # _crystal_underside above. Deliberately does not reuse
-        # common.generate_drips or any curved/round taper - see the module
-        # docstring.
-        _crystal_underside(blocks, col_bottom, columns, size, rng)
+        # break the underside open into a shallow rock floor with one dense
+        # hexagonal crystal mass growing out of it - see _crystal_underside
+        # above. Deliberately does not reuse common.generate_drips or any
+        # curved/round taper - see the module docstring.
+        _crystal_underside(blocks, col_bottom, columns, size, half, diameter, rng)
     else:
         _flatten_floor(blocks, col_bottom, columns, rng)
 

@@ -12,7 +12,7 @@ crystal.py, mushroom.py) - the shared silhouette/taper/drip machinery is
 factored out into generate/islands/common.py; this file only supplies the
 grass/stone/tree-specific block choices and decoration.
 
-Outputs (into --out-dir, default generate/out):
+Outputs (into --out-dir, default generate/output/tmp):
   1. A .npz Structure (block-index array + Atlas legend) in the same
      canonical format used by tree.py - see generate/utils.py.
   2. A 3D preview image rendered as full shaded blocks so you can check

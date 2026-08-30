@@ -33,12 +33,22 @@ decorations on) for iteration, you MUST pass --out to point at a different
 file - the script refuses to run otherwise, specifically so a partial or
 non-standard render can never silently overwrite the canonical one:
 
-    python rollup.py --themes crystal,desert --out generate/out/renders/_debug.png
-    python rollup.py --seeds 1,2 --decorate-top --out generate/out/renders/_debug.png
+    python rollup.py --themes crystal,desert --out generate/output/tmp/_debug.png
+    python rollup.py --seeds 1,2 --decorate-top --out generate/output/tmp/_debug.png
+
+Each grid cell is independently cached (see CACHE_DIR / CACHE_MANIFEST below):
+rendering an island is by far the slowest part of building the rollup, so a
+cell is only regenerated when something that could actually change its
+pixels changed - its theme's own file, common.py/utils.py, or that cell's
+own seed/diameter/max_depth/decoration params. Editing one theme file only
+re-renders that theme's column; editing common.py/utils.py re-renders
+everything. Pass --no-cache to force a full regeneration regardless.
 """
 
 import argparse
+import hashlib
 import importlib
+import json
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -48,7 +58,18 @@ import common
 # The one standard rollup file. Every agent/human looking for "the" rollup
 # should look here, and this path should never point at anything other than
 # the full, default-config grid - see the refusal logic in main().
-CANONICAL_OUT = "generate/out/renders/rollup.png"
+CANONICAL_OUT = "generate/output/rollup.png"
+
+# Per-cell render cache. Each grid cell (one theme, one seed, at whatever
+# diameter/max_depth/decoration params produced it) is expensive to render
+# but fully deterministic, so it's cached under a content hash and only
+# regenerated when something that could change its pixels actually changed:
+# the theme's own file, the shared common.py/utils.py machinery, or the
+# cell's own render params. cell_size is deliberately excluded from the key
+# - it only affects the cheap fit-into-square/paste step done after a cache
+# hit, not the underlying render.
+CACHE_DIR = Path("generate/output/tmp/rollup_cache")
+CACHE_MANIFEST = CACHE_DIR / "manifest.json"
 
 THEME_NAMES = [
     "grass", "volcano", "snow", "crystal", "desert", "mushroom",
@@ -67,6 +88,42 @@ LABEL_COLOR = (26, 26, 26)
 DIVIDER_COLOR = (26, 26, 26)   # matches scene.py's _compose_views divider
 DIVIDER_WIDTH = 2
 GAP = 24                        # matches scene.py's _compose_views gap
+
+
+def _hash_file(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _common_code_hash():
+    """Hash of the shared machinery every theme depends on: common.py
+    itself plus utils.py (which common.py's Atlas/Structure/render_screenshot/
+    value_noise_2d come from). A change to either can change every theme's
+    pixels, so it's tracked as one bucket rather than per-theme."""
+    islands_dir = Path(__file__).resolve().parent
+    common_py = islands_dir / "common.py"
+    utils_py = islands_dir.parent / "utils.py"
+    return hashlib.sha256(
+        (_hash_file(common_py) + _hash_file(utils_py)).encode("utf-8")
+    ).hexdigest()
+
+
+def _theme_file_hash(theme_name):
+    islands_dir = Path(__file__).resolve().parent
+    return _hash_file(islands_dir / f"{theme_name}.py")
+
+
+def _cell_cache_key(theme, seed, diameter, max_depth, decorate_top,
+                     decorate_underside, common_hash, theme_hash):
+    payload = json.dumps(
+        {
+            "theme": theme, "seed": seed, "diameter": diameter,
+            "max_depth": max_depth, "decorate_top": decorate_top,
+            "decorate_underside": decorate_underside,
+            "common_hash": common_hash, "theme_hash": theme_hash,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _load_font(size):
@@ -94,7 +151,7 @@ def _fit_into_square(img, size):
 
 def build_rollup(theme_names, seeds, diameter=DEFAULT_DIAMETER, cell_size=DEFAULT_CELL_SIZE,
                   decorate_top=False, decorate_underside=True,
-                  out_path=CANONICAL_OUT):
+                  out_path=CANONICAL_OUT, use_cache=True):
     modules = [(name, importlib.import_module(name)) for name in theme_names]
 
     col_header_h = 50
@@ -113,22 +170,49 @@ def build_rollup(theme_names, seeds, diameter=DEFAULT_DIAMETER, cell_size=DEFAUL
         draw.text((x0 + (cell_size - tw) / 2, 14), name, fill=LABEL_COLOR, font=font)
 
     max_depth = max(6, diameter // 2)
-    tmp_path = Path("generate/out/renders/_rollup_cell_tmp.png")
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    common_hash = _common_code_hash()
+    theme_hashes = {name: _theme_file_hash(name) for name, _mod in modules}
+
+    manifest_cells = {}
+    n_cached, n_rendered = 0, 0
     for ci, (name, mod) in enumerate(modules):
         for ri, seed in enumerate(seeds):
-            blocks = mod.generate_island(
-                seed=seed, diameter=diameter, max_depth=max_depth,
-                decorate_top=decorate_top, decorate_underside=decorate_underside,
+            key = _cell_cache_key(
+                name, seed, diameter, max_depth, decorate_top, decorate_underside,
+                common_hash, theme_hashes[name],
             )
-            structure = common.blocks_to_structure(blocks)
-            common.preview(structure, mod.BLOCK_COLORS, out_path=tmp_path, title=None)
-            cell_img = Image.open(tmp_path).convert("RGB")
+            cache_file = CACHE_DIR / f"{key}.png"
+            if use_cache and cache_file.exists():
+                cell_img = Image.open(cache_file).convert("RGB")
+                n_cached += 1
+            else:
+                blocks = mod.generate_island(
+                    seed=seed, diameter=diameter, max_depth=max_depth,
+                    decorate_top=decorate_top, decorate_underside=decorate_underside,
+                )
+                structure = common.blocks_to_structure(blocks)
+                common.preview(structure, mod.BLOCK_COLORS, out_path=cache_file, title=None)
+                cell_img = Image.open(cache_file).convert("RGB")
+                n_rendered += 1
+            manifest_cells[f"{name}:{seed}"] = {"key": key, "cache_file": cache_file.name}
+
             fitted = _fit_into_square(cell_img, cell_size)
             x0 = ci * (cell_size + GAP)
             y0 = col_header_h + ri * (cell_size + GAP)
             canvas.paste(fitted, (x0, y0))
 
-    tmp_path.unlink(missing_ok=True)
+    CACHE_MANIFEST.write_text(json.dumps({
+        "common_files": {
+            "common.py": _hash_file(Path(__file__).resolve().parent / "common.py"),
+            "utils.py": _hash_file(Path(__file__).resolve().parent.parent / "utils.py"),
+        },
+        "common_hash": common_hash,
+        "theme_files": theme_hashes,
+        "cells": manifest_cells,
+    }, indent=2, sort_keys=True))
+    print(f"Cache: {n_cached} cell(s) reused, {n_rendered} cell(s) regenerated "
+          f"({CACHE_DIR})")
 
     # Black divider bars between cells (both between columns and between
     # rows), drawn in the middle of each gap - same style as scene.py's
@@ -168,6 +252,9 @@ def main():
                      help="output path. Required if any of --themes/--seeds/--diameter/--cell-size/"
                           "--decorate-top/--no-underside-decor differ from their defaults - "
                           f"otherwise this would overwrite the canonical rollup at {CANONICAL_OUT}")
+    ap.add_argument("--no-cache", action="store_true",
+                     help="ignore the per-cell render cache and regenerate every cell "
+                          f"(the cache lives at {CACHE_DIR})")
     args = ap.parse_args()
 
     is_default_config = (
@@ -181,7 +268,7 @@ def main():
                 "--out is required when overriding --themes/--seeds/--diameter/--cell-size/"
                 "--decorate-top/--no-underside-decor, so a partial/non-standard render can "
                 f"never silently overwrite the canonical rollup at {CANONICAL_OUT}. "
-                "Point --out at a scratch file instead, e.g. generate/out/renders/_debug.png"
+                "Point --out at a scratch file instead, e.g. generate/output/tmp/_debug.png"
             )
         out_path = CANONICAL_OUT
     else:
@@ -193,7 +280,7 @@ def main():
     build_rollup(
         theme_names, seeds, diameter=args.diameter, cell_size=args.cell_size,
         decorate_top=args.decorate_top, decorate_underside=not args.no_underside_decor,
-        out_path=out_path,
+        out_path=out_path, use_cache=not args.no_cache,
     )
 
 

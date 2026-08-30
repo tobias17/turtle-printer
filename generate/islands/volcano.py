@@ -18,7 +18,7 @@ Shares its silhouette/taper/drip machinery with the other island themes
 in generate/islands/ (see common.py) - this file only supplies the
 volcanic-specific block choices and gradient logic.
 
-Outputs (into --out-dir, default generate/out):
+Outputs (into --out-dir, default generate/output/tmp):
   1. A .npz Structure (block-index array + Atlas legend) in the same
      canonical format used by tree.py/grass.py - see generate/utils.py.
   2. A 3D preview image rendered as full shaded blocks so you can check

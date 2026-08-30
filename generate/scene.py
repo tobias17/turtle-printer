@@ -43,7 +43,7 @@ cleared the same radius. It's a real 2D comparison against actual placed
 positions, not a proxy - islands stay ordered by simple shuffle, since the
 placement mechanic itself now does the color spreading.
 
-Outputs (into --out-dir, default generate/out):
+Outputs (into --out-dir, default generate/output):
     <out>.npz    canonical Structure (numpy voxel array + Atlas) - the same
                  format every other generator in this project produces.
     <out>.png    preview render, two panels side by side: isometric on the
@@ -51,11 +51,11 @@ Outputs (into --out-dir, default generate/out):
     <out>.schem  WorldEdit schematic (only with --schem, if mcschematic is
                  installed)
 
-generate/out/scene.png is the STANDARD location to look at this scene -
+generate/output/scene.png is the STANDARD location to look at this scene -
 running the script with no arguments always (re)writes exactly that path,
 so that's where to look (or diff against) rather than a one-off render
-elsewhere. Point --out/--out-dir at a scratch location for throwaway
-experiments instead of overwriting it.
+elsewhere. Point --out/--out-dir at a scratch location (e.g.
+generate/output/tmp/) for throwaway experiments instead of overwriting it.
 
 Usage:
     python generate/scene.py                # generate with the default seed
@@ -321,8 +321,8 @@ def main():
     ap = argparse.ArgumentParser(description="Generate the full spire + floating-islands scene.")
     ap.add_argument("--seed", type=int, default=1, help="random seed")
     ap.add_argument("--out", type=str, default="scene", help="output file prefix")
-    ap.add_argument("--out-dir", type=Path, default=HERE / "out", dest="out_dir",
-                     help="directory for outputs (default: generate/out)")
+    ap.add_argument("--out-dir", type=Path, default=HERE / "output", dest="out_dir",
+                     help="directory for outputs (default: generate/output)")
     ap.add_argument("--schem", action="store_true",
                      help="also export a .schem for WorldEdit (requires mcschematic)")
     args = ap.parse_args()

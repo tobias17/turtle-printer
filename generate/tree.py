@@ -14,7 +14,7 @@ Usage:
     python tree.py --seed 7        # different random variation
     python tree.py --schem         # also export a .schem for WorldEdit
 
-Outputs (into --out-dir, default generate/out):
+Outputs (into --out-dir, default generate/output/tmp):
     <out>.npz            canonical Structure (for the future printer pipeline)
     <out>_preview.png    isometric preview
     <out>_side.png       side view with a height ruler
@@ -387,8 +387,10 @@ def main():
     ap.add_argument("--schem", action="store_true",
                      help="also export a .schem for WorldEdit (requires mcschematic)")
     ap.add_argument("--out", type=str, default="giant_tree", help="output file prefix")
-    ap.add_argument("--out-dir", type=Path, default=Path(__file__).parent / "out",
-                     dest="out_dir", help="directory for outputs (default: generate/out)")
+    ap.add_argument("--out-dir", type=Path, default=Path(__file__).parent / "output" / "tmp",
+                     dest="out_dir", help="directory for outputs (default: generate/output/tmp - "
+                                           "this is a standalone dev-iteration render, not a "
+                                           "canonical output)")
     args = ap.parse_args()
 
     grid = generate_tree(seed=args.seed)
