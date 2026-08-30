@@ -72,9 +72,9 @@ CACHE_DIR = Path("generate/output/tmp/rollup_cache")
 CACHE_MANIFEST = CACHE_DIR / "manifest.json"
 
 THEME_NAMES = [
-    "grass", "volcano", "snow", "crystal", "desert", "mushroom",
-    "coral", "ruins", "swamp", "prismarine", "hive", "bones",
     "spire_base",
+    "grass", "volcano", "snow", "crystal", "desert", "mesa", "mushroom",
+    "coral", "ruins", "swamp", "prismarine", "hive", "bones",
 ]
 DEFAULT_SEEDS = "1,2,3,4"
 # Matches the midpoint of generate/scene.py's DIAMETER_RANGE (100-120) -

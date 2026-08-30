@@ -1,12 +1,13 @@
 """
-Desert / Badlands Floating Island Generator for Minecraft
+Desert Floating Island Generator for Minecraft
 ============================================================
 
-A desert/mesa island variant: a sand crust on top, grading down through
-banded sandstone and terracotta (like eroded badlands strata) into the
-plain rock core every island theme shares underneath. Cacti and dead
-bushes dot the top; the underside sheds bare sandstone shards instead of
-roots or icicles.
+A plain desert island variant: a sand crust on top, grading smoothly down
+through sandstone into the ordinary rock core every island theme shares
+underneath - a simple dune, not a banded mesa. Cacti and dead bushes dot
+the top; the underside sheds bare sandstone shards instead of roots or
+icicles. For the dramatic multi-color terraced badlands look, see
+mesa.py - that's this theme's sibling, not a variant of it.
 
 Shares its silhouette/taper/drip machinery with the other island themes in
 generate/islands/ (see common.py) - this file only supplies the desert-
@@ -17,62 +18,25 @@ Usage:
     python desert.py --diameter 40 --seed 7
 """
 
-import math
-
 import common
 
 # ---------------------------------------------------------------------------
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Sand crust down through banded sandstone/terracotta (badlands-style
-# strata) into bare rock at the core. Each band is solid (no fleck/dither)
-# so the mesa shelves below read as clean stacked strata.
+# Sand crust smoothly grading into sandstone, then bare rock at the core -
+# a plain dune, not the stepped badlands strata mesa.py builds.
 GRADIENT = [
     "minecraft:sandstone",
-    "minecraft:orange_terracotta",
-    "minecraft:terracotta",
     "minecraft:stone",
 ]
-
-NUM_TERRACES = 5  # how many mesa shelves the underside steps through, regardless of size
-
-
-def _terrace_columns(blocks, col_bottom, columns, band_size):
-    """Post-processes an already-carved island (from the ordinary, unmodified
-    common.carve_columns) so each column's underside depth snaps down to the
-    nearest multiple of `band_size`, instead of the smooth continuous taper
-    every other theme uses. This only ever *removes* already-carved blocks
-    (never invents new ones) and keeps col_bottom/columns in sync, so drips
-    and rim decoration - which read those to find each column's true bottom -
-    still attach cleanly to the new, shallower surface.
-
-    Deliberately local to desert.py rather than a carve_columns option: this
-    is the one theme that wants a genuinely different taper *shape* (stacked
-    badlands shelves instead of a cone), and keeping the change here means
-    the shared carve loop every other theme depends on is never touched.
-    """
-    new_columns = []
-    for (x, z, topY, depth, r, localR) in columns:
-        bottomY, _, _, _ = col_bottom[(x, z)]
-        new_depth = band_size * (depth // band_size)
-        if new_depth == 0:
-            new_depth = depth  # already thinner than one shelf - leave it
-        new_bottomY = topY - new_depth
-        for y in range(bottomY, new_bottomY):
-            blocks.pop((x, y, z), None)
-        col_bottom[(x, z)] = (new_bottomY, topY, r, localR)
-        new_columns.append((x, z, topY, new_depth, r, localR))
-    columns[:] = new_columns
 
 
 def pick_gradient(rng, t, jitter=0.0):
     """Picks a block for depth-fraction t in [0, 1] (0 = right at the sand
     crust, 1 = deepest rock). `jitter` (driven only by smooth per-column
     noise) nudges the whole column toward a neighboring band so the strata
-    boundary is wavy instead of a razor-straight ring; each band itself is
-    solid (deterministic rounding, no per-voxel dither) so it reads as one
-    clean stratum."""
+    boundary is wavy instead of a razor-straight ring."""
     n = len(GRADIENT)
     pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
     idx = int(round(min(max(pos, 0.0), n - 1)))
@@ -94,7 +58,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     flat_top        - if True (default), the top surface is a single flat
                        Y level. Outline is still irregular.
     top_thickness_range - (min, max) number of sand-crust layers, before
-                       the sandstone/terracotta gradient starts.
+                       the sandstone/rock gradient starts.
     num_drips / drip_density - see grass.py; here each "drip" is a hanging
                        sandstone shard.
     decorate_top     - if True, scatters dead bushes and cacti on top.
@@ -109,11 +73,6 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     gradient_noise = common.value_noise_2d(size, grid_for(4, 8), seed + 9) * 1.8
     speckle_noise = common.value_noise_2d(size, grid_for(2, 12), seed + 13) * 1.1
 
-    # a handful of big shelves regardless of island size, so the terracing
-    # always reads as a few bold mesa steps rather than many thin bands that
-    # blur back into a smooth cone at larger diameters.
-    band_size = max(2, max_depth // NUM_TERRACES)
-
     def top_block(rng, x, z, xi, zi):
         return pick_sand_crust(rng)
 
@@ -122,24 +81,15 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
             return pick_sand_crust(rng)
         g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        # quantize into the same shelves the silhouette gets stepped into
-        # below, so each terrace reads as one solid stratum (with the usual
-        # per-voxel jitter for texture) instead of a smooth color blend -
-        # that's what actually makes it look like badlands strata.
-        depth_bands = max(1, (thickness - 1 + max_depth) // band_size)
-        band_t = math.floor(min(max(t_grad, 0.0), 0.999999) * depth_bands) / depth_bands
-        return pick_gradient(rng, band_t, jitter=g_jitter)
+        return pick_gradient(rng, t_grad, jitter=g_jitter)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
     )
-    # step the smooth taper this just produced down into discrete mesa
-    # shelves - see _terrace_columns above.
-    _terrace_columns(blocks, col_bottom, columns, band_size)
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):
-            return "minecraft:terracotta" if is_tip else "minecraft:sandstone"
+            return "minecraft:sandstone"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
@@ -183,8 +133,6 @@ def generate_scene(seed=0):
 BLOCK_COLORS = {
     "minecraft:sand": "#e3d2a0",
     "minecraft:sandstone": "#d8c98a",
-    "minecraft:orange_terracotta": "#a34d27",
-    "minecraft:terracotta": "#8f5a44",
     "minecraft:stone": "#8a8a8a",
     "minecraft:dead_bush": "#8a6a3a",
     "minecraft:cactus": "#4a7a3a",
