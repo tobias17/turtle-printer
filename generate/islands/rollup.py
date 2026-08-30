@@ -52,7 +52,7 @@ CANONICAL_OUT = "generate/out/renders/rollup.png"
 
 THEME_NAMES = [
     "grass", "volcano", "snow", "crystal", "desert", "mushroom",
-    "coral", "ruins", "swamp", "prismarine", "hive", "bones", "gearworks",
+    "coral", "ruins", "swamp", "prismarine", "hive", "bones",
     "spire_base",
 ]
 DEFAULT_SEEDS = "1,2,3,4"

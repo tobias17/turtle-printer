@@ -2,12 +2,12 @@
 Grand Scene Composer
 =====================
 Combines Sauron's spire (spire.py) with one island of every theme this
-project has (13: grass, volcano, snow, desert, mushroom, bones, crystal,
-coral, ruins, swamp, prismarine, hive, gearworks), each sized within
+project has (12: grass, volcano, snow, desert, mushroom, bones, crystal,
+coral, ruins, swamp, prismarine, hive), each sized within
 DIAMETER_RANGE. The spire doesn't get a themed island of its own: it's
 planted on top of a dedicated, deliberately plain dark-stone platform
-(spire_base.py - not one of the 13 themes, so it's never placed a second
-time in the ring), fixed at the origin. Every one of the 13 themes,
+(spire_base.py - not one of the 12 themes, so it's never placed a second
+time in the ring), fixed at the origin. Every one of the 12 themes,
 volcano included, is just a normal ring island now.
 
 All thirteen are packed as close to the host as they can get (see
@@ -79,13 +79,12 @@ import spire  # noqa: E402
 import spire_base  # noqa: E402
 import common  # noqa: E402
 import grass, volcano, snow, desert, mushroom, bones  # noqa: E402
-import crystal, coral, ruins, swamp, prismarine, hive, gearworks  # noqa: E402
+import crystal, coral, ruins, swamp, prismarine, hive  # noqa: E402
 
 THEME_MODULES = {
     "grass": grass, "volcano": volcano, "snow": snow, "desert": desert,
     "mushroom": mushroom, "bones": bones, "crystal": crystal, "coral": coral,
     "ruins": ruins, "swamp": swamp, "prismarine": prismarine, "hive": hive,
-    "gearworks": gearworks,
 }
 ALL_THEMES = list(THEME_MODULES)
 HOST_MODULE = spire_base  # the plain dark-stone platform the spire is planted on, fixed at
@@ -101,7 +100,6 @@ TOP_BLOCK = {
     "crystal": "minecraft:calcite", "coral": "minecraft:sand",
     "ruins": "minecraft:moss_block", "swamp": "minecraft:mud",
     "prismarine": "minecraft:prismarine_bricks", "hive": "minecraft:honeycomb_block",
-    "gearworks": "minecraft:copper_block",
 }
 HOST_TOP_COLOR = spire_base.BLOCK_COLORS["minecraft:deepslate"]  # for _place_closest's color spread
 
