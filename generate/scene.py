@@ -15,19 +15,30 @@ group pulls in tight around the spire rather than sitting at some
 precomputed ring radius, while the random angle search (several candidate
 angles are tried at each radius, and one of the valid ones is picked at
 random rather than always the first) keeps it from looking like a rigid
-spiral. Height is drawn uniformly between the spire's base and 20% of its
-height, so islands sit low, near the spire's foot.
+spiral.
 
-The ORDER islands get placed in isn't random: each theme's top-platform
-block has a color (see TOP_BLOCK, sourced straight from that theme's own
-BLOCK_COLORS), and _order_by_color_spread arranges the placement sequence
-so similarly-colored islands (e.g. grass's green and ruins' moss green)
-place several turns apart rather than back to back - since each new island
-packs in wherever is currently closest, islands placed nearby in time tend
-to end up nearby in space, so spacing them out in time is a cheap proxy for
-spacing them out in the final layout. That search runs with its own fixed
-internal seed, not --seed, so the order is identical across seeds - only
-each island's exact packed position changes with --seed.
+Height comes from a 2D noise field (see _height_fraction_field) rather than
+per-island randomness, so nearby islands land at similar heights and the
+cluster reads as one gently undulating group instead of scattered
+independently. The field is shifted so its lowest point sits exactly at
+the spire's own position (a genuine local minimum of the noise, not just
+whatever value happens to be there), and normalized so that minimum maps
+to 0% and its highest sampled point maps to 100% of HEIGHT_FRAC_MAX (20%)
+of the spire's height - islands away from the spire (which is all of them,
+packed as they are) then land a bit above the very bottom rather than
+anywhere in the range, without ever exceeding it.
+
+Color feeds directly into _place_closest itself rather than just the order
+islands get placed in: each theme's top-platform block has a color (see
+TOP_BLOCK, sourced straight from that theme's own BLOCK_COLORS), and
+whenever the closest-radius search turns up several angles that all clear
+the min-distance rule, the one picked is whichever keeps the most distance
+from already-placed islands weighted by how similar their color is to the
+new island's - so a spot near a similarly-colored island (e.g. grass's
+green near ruins' moss green) is only picked if nothing better-separated
+cleared the same radius. It's a real 2D comparison against actual placed
+positions, not a proxy - islands stay ordered by simple shuffle, since the
+placement mechanic itself now does the color spreading.
 
 Outputs (into --out-dir, default generate/out):
     <out>.npz    canonical Structure (numpy voxel array + Atlas) - the same
@@ -60,7 +71,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))               # utils.py, spire.py
 sys.path.insert(0, str(HERE / "islands"))   # common.py + theme modules
 
-from utils import render_screenshot, BG_COLOR  # noqa: E402
+from utils import render_screenshot, BG_COLOR, fractal_noise_2d  # noqa: E402
 import spire  # noqa: E402
 import common  # noqa: E402
 import grass, volcano, snow, desert, mushroom, bones  # noqa: E402
@@ -77,7 +88,7 @@ HOST_THEME = "volcano"  # whichever island the spire is planted on, fixed at the
 
 # Each theme's flat top surface is always one fixed block (checked directly
 # against every theme module's own top_block function) - used only to look
-# up that theme's representative color for the ring-order color spread.
+# up that theme's representative color for _place_closest's color spread.
 TOP_BLOCK = {
     "grass": "minecraft:grass_block", "volcano": "minecraft:blackstone",
     "snow": "minecraft:snow_block", "desert": "minecraft:sand",
@@ -94,38 +105,11 @@ GAP = 18  # minimum clear void every pair of islands (host included) must keep b
 RADIUS_SEARCH_STEP = 6      # how far the search radius grows per failed sweep of _place_closest
 ANGLE_SAMPLES_PER_STEP = 32  # random angles probed at each search radius
 
-ASSIGNMENT_SEED = 12345  # fixed on purpose - see _order_by_color_spread
-
-
-def _place_closest(rng, radius_extent, placed):
-    """Finds a spot for a new island of this radius as close to the origin
-    as the min-distance rule (>= its radius + a neighbor's radius + GAP,
-    against every already-placed island) allows: starting from a radius
-    that could at best clear the single largest already-placed neighbor, it
-    probes ANGLE_SAMPLES_PER_STEP random angles, collects every one that
-    actually clears ALL of them, and randomly picks among those - only
-    stepping the search radius out by RADIUS_SEARCH_STEP and trying again
-    if none of them do. So islands end up as close in as the packing
-    genuinely allows, with the randomness coming from which valid angle (of
-    however many exist at that radius) gets picked, not from overshooting
-    outward. Always terminates - a large enough radius trivially clears
-    everything already placed."""
-    dist = radius_extent + GAP + max(pr for _, _, pr in placed)
-    while True:
-        candidates = []
-        for _ in range(ANGLE_SAMPLES_PER_STEP):
-            angle = rng.uniform(0, 360)
-            x, z = dist * math.cos(math.radians(angle)), dist * math.sin(math.radians(angle))
-            if all(math.hypot(x - px, z - pz) >= radius_extent + pr + GAP for px, pz, pr in placed):
-                candidates.append((x, z, angle))
-        if candidates:
-            return rng.choice(candidates) + (dist,)
-        dist += RADIUS_SEARCH_STEP
-
-
-# ---------------------------------------------------------------------------
-# Placement order: spread similarly-colored tops apart in time
-# ---------------------------------------------------------------------------
+HEIGHT_FRAC_MAX = 0.2          # islands land between 0% (the spire's own base) and this much of its height
+HEIGHT_NOISE_BASE_FREQ = 0.01  # spatial frequency of the height field - low, for a broad gentle "flow"
+                                # across the whole cluster rather than a bump per island
+HEIGHT_NOISE_SAMPLE_RADIUS = 500  # how far out (in blocks) to search for the field's minimum/maximum
+HEIGHT_NOISE_SAMPLE_STEP = 5
 
 def _hex_to_rgb(hex_color):
     h = hex_color.lstrip("#")
@@ -138,39 +122,77 @@ def _color_dist(hex_a, hex_b):
     return math.sqrt((ra - rb) ** 2 + (ga - gb) ** 2 + (ba - bb) ** 2)
 
 
-def _order_by_color_spread(themes, colors, iterations=4000):
-    """Sequence order for `themes` that keeps similarly-colored ones apart
-    in placement order: starts from a fixed shuffle, then hill-climbs by
-    swapping random pairs whenever it doesn't increase the total "nearby
-    closeness" penalty (lower is better - a sum of 1/(distance+1) over
-    every pair within 3 positions of each other in the sequence). Runs with
-    its own fixed ASSIGNMENT_SEED, not the scene's --seed, so the order is
-    always the same; only each island's exact packed position (see
-    _place_closest) is controlled by --seed."""
-    rng = random.Random(ASSIGNMENT_SEED)
-    order = list(themes)
-    rng.shuffle(order)
-    n = len(order)
-    window = min(3, n - 1)
+def _color_similarity(hex_a, hex_b):
+    """0 (nothing alike) to ~1 (identical) - see _place_closest, where it
+    weights how strongly two islands repel each other by position."""
+    return 1.0 / (_color_dist(hex_a, hex_b) + 1.0)
 
-    def penalty():
-        return sum(
-            1.0 / (_color_dist(colors[order[i]], colors[order[(i + d) % n]]) + 1.0)
-            for i in range(n) for d in range(1, window + 1)
-        )
 
-    current = penalty()
-    for _ in range(iterations):
-        i, j = rng.randrange(n), rng.randrange(n)
-        if i == j:
-            continue
-        order[i], order[j] = order[j], order[i]
-        p = penalty()
-        if p <= current:
-            current = p
-        else:
-            order[i], order[j] = order[j], order[i]  # revert
-    return order
+def _place_closest(rng, radius_extent, color, placed):
+    """Finds a spot for a new island of this radius as close to the origin
+    as the min-distance rule (>= its radius + a neighbor's radius + GAP,
+    against every already-placed island) allows: starting from a radius
+    that could at best clear the single largest already-placed neighbor, it
+    probes ANGLE_SAMPLES_PER_STEP random angles and keeps every one that
+    clears ALL of them - only stepping the search radius out by
+    RADIUS_SEARCH_STEP and retrying if none do, so islands end up as close
+    in as the packing genuinely allows.
+
+    Among the valid candidates found at that closest feasible radius, the
+    one actually used isn't picked uniformly at random: each is scored by
+    summing _color_similarity(color, other's color) / distance(candidate,
+    other) over every already-placed island, and the LOWEST-scoring
+    candidate wins - i.e. whichever angle keeps the most distance from
+    similarly-colored neighbors specifically, not just from neighbors in
+    general. `placed` entries are (x, z, radius_extent, color_hex)."""
+    dist = radius_extent + GAP + max(pr for _, _, pr, _ in placed)
+    while True:
+        candidates = []
+        for _ in range(ANGLE_SAMPLES_PER_STEP):
+            angle = rng.uniform(0, 360)
+            x, z = dist * math.cos(math.radians(angle)), dist * math.sin(math.radians(angle))
+            if all(math.hypot(x - px, z - pz) >= radius_extent + pr + GAP for px, pz, pr, _ in placed):
+                candidates.append((x, z, angle))
+        if candidates:
+            def color_badness(candidate):
+                cx, cz, _ = candidate
+                return sum(
+                    _color_similarity(color, pc) / max(1.0, math.hypot(cx - px, cz - pz))
+                    for px, pz, _, pc in placed
+                )
+            return min(candidates, key=color_badness) + (dist,)
+        dist += RADIUS_SEARCH_STEP
+
+
+# ---------------------------------------------------------------------------
+# Height: a 2D noise field, anchored so the spire sits at its low point
+# ---------------------------------------------------------------------------
+
+def _height_fraction_field(seed):
+    """Builds a smooth 2D noise field (see utils.fractal_noise_2d) over the
+    area islands can occupy, locates its lowest point within that sample,
+    and returns height_fraction(x, z) - the field re-centered so that
+    minimum sits exactly at the origin (the spire's own position) and
+    normalized so it maps to 0.0 there and 1.0 at the field's highest
+    sampled point. Because the field is smooth and spatially coherent
+    (unlike per-island independent randomness), islands near each other
+    land at similar heights - the cluster "flows" - and because the spire
+    itself anchors the minimum, everything else tends to sit a bit above
+    the very bottom rather than anywhere in the range."""
+    coords = np.arange(-HEIGHT_NOISE_SAMPLE_RADIUS, HEIGHT_NOISE_SAMPLE_RADIUS + 1, HEIGHT_NOISE_SAMPLE_STEP)
+    gx, gz = np.meshgrid(coords, coords, indexing="ij")
+    raw = fractal_noise_2d(gx, gz, seed, base_freq=HEIGHT_NOISE_BASE_FREQ)
+    noise_min, noise_max = float(raw.min()), float(raw.max())
+    anchor_i = np.unravel_index(np.argmin(raw), raw.shape)
+    anchor_x, anchor_z = float(gx[anchor_i]), float(gz[anchor_i])
+
+    def height_fraction(x, z):
+        value = fractal_noise_2d(
+            np.array([x + anchor_x]), np.array([z + anchor_z]), seed, base_freq=HEIGHT_NOISE_BASE_FREQ,
+        )[0]
+        return min(1.0, max(0.0, (value - noise_min) / (noise_max - noise_min)))
+
+    return height_fraction
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +215,9 @@ def structure_to_blocks(structure, offset=(0, 0, 0)):
 def build_scene(seed=1):
     rng = random.Random(seed)
     blocks = {}
-    placed = []  # (x, z, radius_extent) for every island placed so far, host included
+    placed = []  # (x, z, radius_extent, top_color) for every island placed so far, host included
+
+    top_colors = {theme: THEME_MODULES[theme].BLOCK_COLORS[TOP_BLOCK[theme]] for theme in ALL_THEMES}
 
     host_diameter = round(rng.uniform(*DIAMETER_RANGE))
     host_max_depth = max(6, host_diameter // 2)
@@ -201,7 +225,7 @@ def build_scene(seed=1):
         seed=seed, diameter=host_diameter, max_depth=host_max_depth,
         decorate_top=False, decorate_underside=True, offset=(0, 0, 0),
     ))
-    placed.append((0.0, 0.0, host_diameter / 2.0))
+    placed.append((0.0, 0.0, host_diameter / 2.0, top_colors[HOST_THEME]))
     print(f"host {HOST_THEME} island (spire): d={host_diameter}")
 
     print("generating spire...")
@@ -214,21 +238,22 @@ def build_scene(seed=1):
     # island's flat top (topY=0, so the surface to build on is y=1).
     spire_offset = (-spire.CX, 1, -spire.CY)
     blocks.update(structure_to_blocks(spire_structure, offset=spire_offset))
-    height_lo, height_hi = spire_offset[1], spire_offset[1] + spire_height * 0.2
+    height_lo = spire_offset[1]
+    height_span = spire_height * HEIGHT_FRAC_MAX
+    height_fraction = _height_fraction_field(seed + 9973)
 
-    ring_themes = [t for t in ALL_THEMES if t != HOST_THEME]
-    top_colors = {theme: THEME_MODULES[theme].BLOCK_COLORS[TOP_BLOCK[theme]] for theme in ring_themes}
-    order = _order_by_color_spread(ring_themes, top_colors)
+    order = [t for t in ALL_THEMES if t != HOST_THEME]
+    rng.shuffle(order)
 
     for i, theme in enumerate(order):
         module = THEME_MODULES[theme]
         diameter = round(rng.uniform(*DIAMETER_RANGE))
         radius_extent = diameter / 2.0
 
-        x, z, angle, dist = _place_closest(rng, radius_extent, placed)
+        x, z, angle, dist = _place_closest(rng, radius_extent, top_colors[theme], placed)
 
-        placed.append((x, z, radius_extent))
-        y = round(rng.uniform(height_lo, height_hi))
+        placed.append((x, z, radius_extent, top_colors[theme]))
+        y = round(height_lo + height_fraction(x, z) * height_span)
         offset = (round(x), y, round(z))
         max_depth = max(6, diameter // 2)
 
