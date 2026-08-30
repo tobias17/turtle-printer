@@ -2,11 +2,11 @@ numpy
 matplotlib
 Pillow
 
-# voxel.py (mesh -> voxel shell); also generate/utils.py's exact-block
-# preview renderer (offscreen exposed-face mesh rendering)
+# printer_tobi/voxel.py (mesh -> voxel shell); also generate/utils.py's
+# exact-block preview renderer (offscreen exposed-face mesh rendering)
 open3d
 
-# slice.py --debug (coordinate plotting)
+# printer_tobi/slice.py --debug (coordinate plotting)
 opencv-python
 
 # generate/*.py: optional .schem export for loading into a game save

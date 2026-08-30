@@ -1,0 +1,187 @@
+{
+  "dimensions": [
+    111,
+    191,
+    111
+  ],
+  "automated_blocks": 226350,
+  "glowstone_omitted": [
+    [
+      55,
+      168,
+      55
+    ]
+  ],
+  "workers": {
+    "T01": {
+      "x_range": [
+        0,
+        22
+      ],
+      "width": 23,
+      "blocks": 23193,
+      "materials": {
+        "Black Concrete": 3964,
+        "Obsidian": 14395,
+        "Stone Bricks": 607,
+        "Nether Bricks": 3575,
+        "Purple Stained Glass": 111,
+        "Nether Brick Fence": 11,
+        "Stone Brick Slab": 530
+      }
+    },
+    "T02": {
+      "x_range": [
+        23,
+        29
+      ],
+      "width": 7,
+      "blocks": 21444,
+      "materials": {
+        "Black Concrete": 6420,
+        "Obsidian": 9704,
+        "Stone Bricks": 1624,
+        "Nether Bricks": 3097,
+        "Purple Stained Glass": 214,
+        "Nether Brick Fence": 8,
+        "Stone Brick Slab": 377
+      }
+    },
+    "T03": {
+      "x_range": [
+        30,
+        37
+      ],
+      "width": 8,
+      "blocks": 22816,
+      "materials": {
+        "Black Concrete": 6930,
+        "Obsidian": 8509,
+        "Stone Bricks": 3320,
+        "Nether Bricks": 3505,
+        "Purple Stained Glass": 123,
+        "Nether Brick Fence": 11,
+        "Stone Brick Slab": 418
+      }
+    },
+    "T04": {
+      "x_range": [
+        38,
+        47
+      ],
+      "width": 10,
+      "blocks": 23970,
+      "materials": {
+        "Black Concrete": 7247,
+        "Obsidian": 6438,
+        "Stone Bricks": 5850,
+        "Nether Bricks": 3991,
+        "Purple Stained Glass": 22,
+        "Nether Brick Fence": 7,
+        "Stone Brick Slab": 415
+      }
+    },
+    "T05": {
+      "x_range": [
+        48,
+        55
+      ],
+      "width": 8,
+      "blocks": 23989,
+      "materials": {
+        "Black Concrete": 5200,
+        "Obsidian": 10518,
+        "Stone Bricks": 4352,
+        "Nether Bricks": 3085,
+        "Purple Stained Glass": 558,
+        "Nether Brick Fence": 8,
+        "Stone Brick Slab": 268
+      }
+    },
+    "T06": {
+      "x_range": [
+        56,
+        62
+      ],
+      "width": 7,
+      "blocks": 19515,
+      "materials": {
+        "Black Concrete": 4404,
+        "Obsidian": 8069,
+        "Stone Bricks": 3862,
+        "Nether Bricks": 2538,
+        "Purple Stained Glass": 392,
+        "Nether Brick Fence": 8,
+        "Stone Brick Slab": 242
+      }
+    },
+    "T07": {
+      "x_range": [
+        63,
+        72
+      ],
+      "width": 10,
+      "blocks": 23970,
+      "materials": {
+        "Black Concrete": 7247,
+        "Obsidian": 6438,
+        "Stone Bricks": 5850,
+        "Nether Bricks": 3991,
+        "Purple Stained Glass": 22,
+        "Nether Brick Fence": 8,
+        "Stone Brick Slab": 414
+      }
+    },
+    "T08": {
+      "x_range": [
+        73,
+        80
+      ],
+      "width": 8,
+      "blocks": 22816,
+      "materials": {
+        "Black Concrete": 6930,
+        "Obsidian": 8509,
+        "Stone Bricks": 3320,
+        "Nether Bricks": 3505,
+        "Purple Stained Glass": 123,
+        "Nether Brick Fence": 10,
+        "Stone Brick Slab": 419
+      }
+    },
+    "T09": {
+      "x_range": [
+        81,
+        87
+      ],
+      "width": 7,
+      "blocks": 21444,
+      "materials": {
+        "Black Concrete": 6420,
+        "Obsidian": 9704,
+        "Stone Bricks": 1624,
+        "Nether Bricks": 3097,
+        "Purple Stained Glass": 214,
+        "Nether Brick Fence": 8,
+        "Stone Brick Slab": 377
+      }
+    },
+    "T10": {
+      "x_range": [
+        88,
+        110
+      ],
+      "width": 23,
+      "blocks": 23193,
+      "materials": {
+        "Black Concrete": 3964,
+        "Obsidian": 14395,
+        "Stone Bricks": 607,
+        "Nether Bricks": 3575,
+        "Purple Stained Glass": 111,
+        "Nether Brick Fence": 11,
+        "Stone Brick Slab": 530
+      }
+    }
+  }
+}

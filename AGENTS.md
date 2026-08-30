@@ -9,12 +9,13 @@ Generates Lua scripts for a swarm of ComputerCraft turtles in Minecraft that
 3D-print large structures. There are two pipelines, at different stages of
 maturity:
 
-1. **Mesh-to-turtle pipeline (production).** `voxel.py` converts a 3D mesh
-   (e.g. a statue `.obj`) into a hollow voxel shell (`.npy`, boolean array).
-   `slice.py` slices that shell into per-turtle build paths (TSP-ordered
-   coordinates per layer) and injects them into the Lua templates in
-   `templates/` to produce a runnable `main.lua`. This is the path used for
-   real builds so far (see `workspaces/statue/`).
+1. **Mesh-to-turtle pipeline (production), in `printer_tobi/`.**
+   `printer_tobi/voxel.py` converts a 3D mesh (e.g. a statue `.obj`) into a
+   hollow voxel shell (`.npy`, boolean array). `printer_tobi/slice.py`
+   slices that shell into per-turtle build paths (TSP-ordered coordinates
+   per layer) and injects them into the Lua templates in
+   `printer_tobi/templates/` to produce a runnable `main.lua`. This is the
+   path used for real builds so far (see `printer_tobi/workspaces/statue/`).
 2. **Procedural generators (`generate/`, work in progress).** Python scripts
    that generate structures algorithmically instead of from a mesh —
    `generate/islands/` (floating islands, one file per biome theme —
@@ -24,7 +25,7 @@ maturity:
    massive central tree/spire surrounded by floating islands) and are
    **not yet wired into the mesh-to-turtle pipeline** — that integration is
    deliberately deferred until the generation tooling itself settles. Don't
-   assume `slice.py` can currently consume their output.
+   assume `printer_tobi/slice.py` can currently consume their output.
 
 ## `generate/` conventions
 

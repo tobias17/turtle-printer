@@ -1,0 +1,157 @@
+{
+  "tower_origin": [
+    235,
+    60,
+    250
+  ],
+  "orientation": {
+    "schematic_x": "world +X",
+    "schematic_z": "world +Z"
+  },
+  "footprint": {
+    "x": [
+      235,
+      345
+    ],
+    "z": [
+      250,
+      360
+    ],
+    "y_nominal": [
+      60,
+      250
+    ]
+  },
+  "workers": [
+    {
+      "worker": "T01",
+      "start_world": [
+        235,
+        61,
+        250
+      ],
+      "schematic_x": [
+        0,
+        22
+      ],
+      "blocks": 23193
+    },
+    {
+      "worker": "T02",
+      "start_world": [
+        258,
+        61,
+        250
+      ],
+      "schematic_x": [
+        23,
+        29
+      ],
+      "blocks": 21444
+    },
+    {
+      "worker": "T03",
+      "start_world": [
+        265,
+        61,
+        250
+      ],
+      "schematic_x": [
+        30,
+        37
+      ],
+      "blocks": 22816
+    },
+    {
+      "worker": "T04",
+      "start_world": [
+        273,
+        61,
+        250
+      ],
+      "schematic_x": [
+        38,
+        47
+      ],
+      "blocks": 23970
+    },
+    {
+      "worker": "T05",
+      "start_world": [
+        283,
+        61,
+        250
+      ],
+      "schematic_x": [
+        48,
+        55
+      ],
+      "blocks": 23989
+    },
+    {
+      "worker": "T06",
+      "start_world": [
+        291,
+        61,
+        250
+      ],
+      "schematic_x": [
+        56,
+        62
+      ],
+      "blocks": 19515
+    },
+    {
+      "worker": "T07",
+      "start_world": [
+        298,
+        61,
+        250
+      ],
+      "schematic_x": [
+        63,
+        72
+      ],
+      "blocks": 23970
+    },
+    {
+      "worker": "T08",
+      "start_world": [
+        308,
+        61,
+        250
+      ],
+      "schematic_x": [
+        73,
+        80
+      ],
+      "blocks": 22816
+    },
+    {
+      "worker": "T09",
+      "start_world": [
+        316,
+        61,
+        250
+      ],
+      "schematic_x": [
+        81,
+        87
+      ],
+      "blocks": 21444
+    },
+    {
+      "worker": "T10",
+      "start_world": [
+        323,
+        61,
+        250
+      ],
+      "schematic_x": [
+        88,
+        110
+      ],
+      "blocks": 23193
+    }
+  ]
+}
