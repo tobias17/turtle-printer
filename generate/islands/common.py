@@ -182,6 +182,50 @@ def carve_columns(seed, diameter, top_thickness_range, max_depth, flat_top,
 # Shared underside decoration
 # ---------------------------------------------------------------------------
 
+DRIP_SUPPORT_TOLERANCE = 3  # blocks of ordinary rock-surface unevenness to ignore
+
+
+def _drip_support_radius(col_bottom, x, z, bottom_y, max_r):
+    """How far a drip anchored at (x, z) can flare out before its cap
+    would sit under a spot the carved rock doesn't reach anywhere near - a
+    missing neighbor column, or one whose own rock stops well above this
+    anchor's bottomY - which reads as the drip's wide top hanging over
+    nothing instead of growing out of solid stone.
+
+    Only checked in the outward arc (away from the island's center at the
+    origin), with a few blocks of tolerance: the carved cone gets shallower
+    as you move away from center as a normal, continuous feature of the
+    taper (typically by close to a block of depth per block of horizontal
+    distance), so demanding neighbors be no shallower at all - or checking
+    a full ring instead of just outward - flags that constantly and leaves
+    every drip a bare single-column toothpick. The real problem case is an
+    anchor sitting at a distinctly deeper spike/pocket than what's
+    immediately outward of it (e.g. a lone column near the tapered tip, or
+    a sharp dip from edge/taper noise), which this still catches because
+    moving further outward from an already-thin point runs out of rock
+    fast, well past ordinary unevenness.
+    """
+    if max_r <= 0:
+        return 0
+    r_from_center = math.hypot(x, z)
+    base_angle = math.atan2(z, x) if r_from_center > 1e-6 else 0.0
+    r = 0
+    for test_r in range(1, max_r + 1):
+        ok = True
+        for offset_deg in range(-60, 61, 20):
+            rad = base_angle + math.radians(offset_deg)
+            nx = round(x + test_r * math.cos(rad))
+            nz = round(z + test_r * math.sin(rad))
+            nb = col_bottom.get((nx, nz))
+            if nb is None or nb[0] > bottom_y + DRIP_SUPPORT_TOLERANCE:
+                ok = False
+                break
+        if not ok:
+            break
+        r = test_r
+    return r
+
+
 def generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                     num_drips, drip_density, drip_block_fn,
                     max_drip_r_fn=None, after_drip_fn=None):
@@ -199,7 +243,11 @@ def generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
     """
     max_drip_r = max_drip_r_fn(diameter) if max_drip_r_fn else max(0, round(diameter / 40))
     KEEP_OUT_MARGIN = 1  # a radius-N drip needs N+1 blocks of clearance
-    eligible = list(columns)
+    # Anchors this shallow are right at the island's tapered-out rim - too
+    # thin a perch for even a slim drip to read as growing out of the rock
+    # rather than out of a single stray crust block.
+    MIN_ANCHOR_DEPTH = 2
+    eligible = [c for c in columns if c[3] >= MIN_ANCHOR_DEPTH]
 
     n_drips = num_drips if num_drips is not None else max(3, int(len(eligible) * drip_density))
 
@@ -215,6 +263,7 @@ def generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
         # much clearance its own column actually has.
         clearance = int(localR - r)
         local_max_r = max(0, min(max_drip_r, clearance - KEEP_OUT_MARGIN))
+        local_max_r = min(local_max_r, _drip_support_radius(col_bottom, x, z, bottomY, local_max_r))
         drip_r_choices = list(range(0, local_max_r + 1))
         drip_r_weights = [3] + [1] * local_max_r if local_max_r > 0 else [1]
         drip_r = rng.choices(drip_r_choices, weights=drip_r_weights)[0]
