@@ -36,7 +36,10 @@ GRADIENT = [
     "minecraft:cobblestone",
 ]
 
-NUM_TIERS = 5  # blocky masonry terraces, same trick as desert.py's mesa shelves
+NUM_TIERS = 3  # blocky masonry terraces, same quantize-the-natural-taper trick
+                # as desert.py's mesa shelves - fewer and bolder than desert's
+                # 5, so each step is a big, unmistakable drop instead of a
+                # fine ledge, reading as a stepped ziggurat rather than a mesa
 PILLAR_COUNT_RANGE = (2, 4)
 PILLAR_RADIUS = 1  # half-width beyond the center block, so pillars are 3x3
 
@@ -62,11 +65,15 @@ def _terrace_and_pillars(blocks, col_bottom, columns, rng, max_depth):
     """Post-processes the already-carved (unmodified common.carve_columns)
     underside into blocky collapsed-masonry tiers (same technique as
     desert.py's mesa terracing - snapping each column's depth down to the
-    nearest shelf) with a handful of thick 3x3 columns near the center
-    exempted entirely, so they keep their full natural depth and read as
-    the last standing support pillars of a collapsed temple - the same
-    "flatten almost everything, exempt a few" trick crystal.py's geode
-    floor uses, just with thick square pillars instead of thin spikes.
+    nearest shelf, floor-dividing its own natural taper depth by band_size)
+    with a handful of thick 3x3 columns near the center exempted entirely,
+    so they keep their full natural depth and read as the last standing
+    support pillars of a collapsed temple - the same "flatten almost
+    everything, exempt a few" trick crystal.py's geode floor uses, just
+    with thick square pillars instead of thin spikes. NUM_TIERS is kept
+    deliberately low (3, vs. desert's 5) so band_size - and therefore each
+    step's height - is large: a handful of big, unmistakable drops that
+    read as a stepped, upside-down ziggurat, not desert's finer mesa shelves.
 
     Like desert.py's mesa terracing, this only ever *removes* already-
     carved blocks (pillar columns are only recolored, never extended) and
@@ -90,7 +97,8 @@ def _terrace_and_pillars(blocks, col_bottom, columns, rng, max_depth):
         bottomY, _, _, _ = col_bottom[(x, z)]
         if (x, z) in pillar_xy:
             for y in range(bottomY, topY):
-                blocks[(x, y, z)] = "minecraft:mossy_stone_bricks"
+                blocks[(x, y, z)] = ("minecraft:mossy_stone_bricks" if rng.random() < 0.5
+                                      else "minecraft:cobblestone")
             new_columns.append((x, z, topY, depth, r, localR))
             continue
         new_depth = band_size * (depth // band_size)
@@ -158,25 +166,29 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
 
-        # heavy vine cover near the rim - a jungle ruin is draped in vines,
-        # not sparsely dotted with them
+        # light vine cover near the rim only - an accent, not a curtain, so
+        # the stepped masonry tiers stay the visual focus
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
             rim_block_fn=lambda rng: "minecraft:vine",
-            r_frac_threshold=0.4, chance=0.4, length_range=(3, 9),
+            r_frac_threshold=0.5, chance=0.12, length_range=(2, 4),
         )
 
-        # vines also dangling from just under the top edge, over the cliff
-        # face - the crust itself reads as overgrown, not just the drips
+        # the occasional vine dangling from just under the top edge, over
+        # the cliff face
         for (x, z, topY, depth, r, localR) in columns:
-            if r / localR > 0.7 and rng.random() < 0.25:
+            if r / localR > 0.75 and rng.random() < 0.08:
                 blocks.setdefault((x, topY - 1, z), "minecraft:vine")
 
     if decorate_top:
-        # sparse jungle saplings and moss carpet on the top surface
+        # sparse jungle saplings and moss carpet on the top surface - fern/
+        # sapling weighted over moss_carpet so moss reads as an accent
         for (x, z, topY, depth, r, localR) in columns:
             if r / localR < 0.9 and rng.random() < 0.1:
-                block = rng.choice(["minecraft:moss_carpet", "minecraft:fern", "minecraft:jungle_sapling"])
+                block = rng.choice(
+                    ["minecraft:fern", "minecraft:fern",
+                     "minecraft:jungle_sapling", "minecraft:moss_carpet"]
+                )
                 blocks.setdefault((x, topY + 1, z), block)
 
         # a couple of broken-pillar stumps poking up from the floor

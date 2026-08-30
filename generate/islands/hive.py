@@ -3,13 +3,18 @@ Honeycomb Hive Floating Island Generator for Minecraft
 =========================================================
 
 A giant hardened-honeycomb island variant: golden honeycomb crust over a
-waxy oak-frame core down to plain rock at the very center, dotted with wild
-meadow flowers and beehives on top. Structurally the underside is not a
-cone, dome, or platter like the other themes - it's tessellated into a
-honeycomb of hexagonal cells (see `_honeycomb_cells`), each hanging down to
-its own depth, frame-recolored along the cell walls, and capped with a
-drop of honey at the tip - so the whole underside reads as a slab of comb
-with cells of different lengths, not a single smooth shape.
+waxy oak-frame core, dotted with wild meadow flowers and beehives on top.
+Structurally the underside is a perfectly regular hexagon grid (see
+`_honeycomb_cells`) of hollow tubes extending straight down from the
+platform - open shafts with uniform, single-material oak-frame walls, not
+filled comb blocks - with NO per-cell noise or randomness anywhere in the
+pattern itself: every wall is exactly one voxel thick (an exact hex-edge
+test, not a rounded approximation) and one uniform color top to bottom.
+The only thing that varies from cell to cell is how far down each tube
+reaches, and that's set by a smooth, deterministic function of the cell's
+own distance from the island's center (deepest at the center, shortest at
+the rim), so the ensemble is cut off into roughly the same upside-down
+mound silhouette while the grid underneath it stays perfectly uniform.
 
 Shares its silhouette/taper/drip machinery with the other island themes in
 generate/islands/ (see common.py) - this file only supplies the hive-
@@ -21,7 +26,6 @@ Usage:
 """
 
 import math
-import random
 
 import common
 
@@ -29,27 +33,22 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Honeycomb crust down through a waxy oak-plank frame to plain rock at the
-# core - kept to 3 solid bands (no fleck/dither). Honey itself is reserved
-# exclusively for the hex-cell tips and drips (see _honeycomb_cells), never
-# part of the bulk gradient, so it reads as something dripping OUT of the
-# comb rather than more bulk texture.
+# Honeycomb crust for the platform itself. The tube walls below it are a
+# single uniform frame material (see _honeycomb_cells) rather than a
+# depth-based gradient - there's deliberately no third/deeper band here,
+# since every below-crust column is either that one wall material or empty
+# air, never a smooth color transition.
 GRADIENT = [
     "minecraft:honeycomb_block",
     "minecraft:oak_planks",
-    "minecraft:stone",
 ]
 
 HEX_SIZE = 5.0  # world-space radius of one honeycomb cell, in blocks
 SQRT3 = math.sqrt(3.0)
-WALL_APOTHEM_FRAC = 0.8  # fraction of the hex apothem beyond which a column
-                          # is treated as cell-wall frame instead of interior
-SHELF_DEPTH_FRAC = 0.22  # base depth every cell starts from before its own
-                          # per-cell extension
-CELL_DEPTH_MIN_FRAC = 0.4
-CELL_DEPTH_MAX_FRAC = 1.0
-WALL_BAND_FRAC = 0.4  # fraction of a cell's own final depth, right at the
-                       # cut surface, that gets recolored as visible frame
+TAPER_POWER = 1.0  # exponent on (1 - radius_fraction) used to set each
+                    # cell's tube length - a smooth, deterministic falloff
+                    # from center to rim (tapering to nothing right at the
+                    # rim - see cell_depth), with no per-cell noise anywhere
 
 
 def pick_gradient(rng, t, jitter=0.0):
@@ -69,13 +68,9 @@ def pick_comb_crust(rng):
     return "minecraft:honeycomb_block"
 
 
-def _hex_cell_and_offset(x, z, size):
-    """Maps a world (x, z) to its enclosing pointy-top hexagon, using the
-    standard axial round (redblobgames' hex-grid algorithm). Returns
-    ((cell_q, cell_r), offset) where offset is the Euclidean distance from
-    (x, z) to that hex cell's own center - used as a cheap in/near-wall test
-    (a circle inscribed near the hex's apothem approximates its edges close
-    enough to read as cell walls at voxel resolution)."""
+def _hex_cell(x, z, size):
+    """Maps a world (x, z) to its enclosing pointy-top hexagon cell (q, r),
+    using the standard axial round (redblobgames' hex-grid algorithm)."""
     q = (SQRT3 / 3 * x - 1.0 / 3 * z) / size
     r = (2.0 / 3 * z) / size
     cx, cy, cz = q, -q - r, r
@@ -87,64 +82,106 @@ def _hex_cell_and_offset(x, z, size):
         ry = -rx - rz
     else:
         rz = -rx - ry
-    cell = (int(rx), int(rz))
-    cx_world = size * (SQRT3 * cell[0] + SQRT3 / 2 * cell[1])
-    cz_world = size * (1.5 * cell[1])
-    offset = math.hypot(x - cx_world, z - cz_world)
-    return cell, offset
+    return (int(rx), int(rz))
 
 
-def _honeycomb_cells(blocks, col_bottom, columns, seed, max_depth):
+def _is_wall(x, z, size):
+    """A column is a wall column iff moving to any orthogonal neighbor
+    crosses into a different hex cell - i.e. it sits exactly on a cell
+    boundary. This traces the TRUE hexagon edges to voxel resolution
+    instead of the previous approach (a circle-from-center distance
+    threshold, which only approximated the edges and rounded unevenly), so
+    every wall comes out an exact, uniform single voxel thick everywhere."""
+    cell = _hex_cell(x, z, size)
+    return (_hex_cell(x + 1, z, size) != cell or _hex_cell(x - 1, z, size) != cell or
+            _hex_cell(x, z + 1, size) != cell or _hex_cell(x, z - 1, size) != cell)
+
+
+def _honeycomb_cells(blocks, col_bottom, columns, max_depth, crust_depth):
     """Post-processes the already-carved (unmodified common.carve_columns)
-    underside into a honeycomb: every column is assigned to one pointy-top
-    hex cell (see _hex_cell_and_offset), and every column in the same cell
-    is truncated down to that cell's own depth - a single value drawn once
-    per cell from a hash of (seed, cell), not from any per-column noise -
-    so each hex reads as one flat-bottomed cell of a distinct length,
-    exactly like desert.py's mesa terraces quantize depth into shared bands,
-    just partitioned spatially by hex membership instead of by depth.
-    Columns near a cell's own edge (by the offset test) are recolored into
-    the frame material near their cut surface, and the interior columns get
-    a drop of honey at the tip, so the underside reads as a slab of dripping
-    comb rather than a single smooth taper.
+    underside into a perfectly regular hex-tube grid: every column is
+    assigned to one pointy-top hex cell (see _hex_cell), and every column
+    in the same cell is set to exactly that cell's own tube length - a
+    smooth, purely deterministic function of the cell's average distance
+    from the island's own center (TAPER_POWER), with NO per-cell or
+    per-column randomness anywhere. Cutting each cell to its own length is
+    additive as well as subtractive (blocks are added if the column's
+    natural carve_columns depth was shallower than the target, removed if
+    deeper), which guarantees every column in a cell ends at exactly the
+    same Y - a level, uniform tube floor, never a jagged one - the same
+    "cut a regular grid down to a silhouette" idea as prismarine.py's
+    towers or gearworks.py's circuit grid, just applied to every cell
+    instead of a sparse symmetric subset.
 
-    Like desert.py's mesa terracing, this only ever *removes* already-
-    carved blocks and keeps col_bottom/columns in sync (drips/rim decoration
-    read those for each column's true bottom), and is deliberately local to
-    hive.py rather than a carve_columns option, so no other theme is
-    affected.
+    Wall columns (see _is_wall) are solid, recolored one uniform frame
+    material top to bottom - no gradient, no accent, no randomness.
+    Interior columns - and any wall whose cell tapers to less than
+    crust_depth this close to the rim (see cell_depth) - are cleared
+    entirely below the shared crust cap (crust_depth - the minimum
+    top-crust thickness every column is guaranteed to have), so a cell
+    with no meaningful tube length just sits flush with the platform,
+    never hanging a wall stub past the crust's own edge, and each real
+    tube reads as an open shaft - air inside, walls only - rather than a
+    filled comb block.
+
+    Unlike desert.py's mesa terracing (subtractive only), this is
+    deliberately also additive so every wall in a cell lines up exactly;
+    it keeps col_bottom/columns in sync (top decoration reads those for
+    each column's true bottom) and is deliberately local to hive.py rather
+    than a carve_columns option, so no other theme is affected.
     """
-    shelf_depth = max(3, int(max_depth * SHELF_DEPTH_FRAC))
-    apothem = HEX_SIZE * SQRT3 / 2
-    wall_threshold = apothem * WALL_APOTHEM_FRAC
+    cell_members = {}
+    for c in columns:
+        cell = _hex_cell(c[0], c[1], HEX_SIZE)
+        cell_members.setdefault(cell, []).append(c)
+
     depth_cache = {}
 
     def cell_depth(cell):
         if cell not in depth_cache:
-            frac = random.Random(f"{seed}:{cell[0]}:{cell[1]}").uniform(
-                CELL_DEPTH_MIN_FRAC, CELL_DEPTH_MAX_FRAC)
-            depth_cache[cell] = max(shelf_depth, int(max_depth * frac))
+            members = cell_members[cell]
+            # the MAX (not average) member radius fraction - a cell that
+            # only partially overlaps the island (straddling the rim) has
+            # at least one member right at the edge, so this correctly
+            # taps that whole cell down to zero along with truly-interior
+            # rim cells, instead of a partial-overlap cell getting a full
+            # wall out of its few members that happen to sit further in
+            frac = max((m[4] / m[5] if m[5] else 1.0) for m in members)
+            taper = max(0.0, 1.0 - frac) ** TAPER_POWER
+            raw = round(taper * max_depth)
+            # a tube shorter than the crust itself isn't a tube at all -
+            # treat it as zero so that cell sits flush with the platform
+            # instead of hanging a short wall stub past its own edge
+            depth_cache[cell] = raw if raw >= crust_depth else 0
         return depth_cache[cell]
 
     new_columns = []
     for (x, z, topY, depth, r, localR) in columns:
-        cell, offset = _hex_cell_and_offset(x, z, HEX_SIZE)
-        target = min(depth, cell_depth(cell))
+        cell = _hex_cell(x, z, HEX_SIZE)
+        target = cell_depth(cell)
         bottomY, _, _, _ = col_bottom[(x, z)]
         new_bottomY = topY - target
-        for y in range(bottomY, new_bottomY):
-            blocks.pop((x, y, z), None)
+        crust_bottom = topY - crust_depth + 1
 
-        if offset >= wall_threshold:
-            wall_band = max(1, int(target * WALL_BAND_FRAC))
-            for y in range(new_bottomY, min(topY, new_bottomY + wall_band)):
-                if (x, y, z) in blocks:
-                    blocks[(x, y, z)] = "minecraft:oak_planks"
+        if target > 0 and _is_wall(x, z, HEX_SIZE):
+            # trim any natural excess below the tube's own cutoff, then
+            # (re)fill the whole tube one uniform material - this also
+            # ADDS blocks where the natural taper was shallower than the
+            # target, so every wall in the cell ends at the same exact Y
+            for y in range(bottomY, new_bottomY):
+                blocks.pop((x, y, z), None)
+            for y in range(new_bottomY, crust_bottom):
+                blocks[(x, y, z)] = "minecraft:oak_planks"
         else:
-            blocks[(x, new_bottomY, z)] = "minecraft:honey_block"
+            # hollow interior, OR a wall whose cell has zero tube length
+            # this close to the rim - either way, clear the whole shaft
+            # below the shared crust cap so nothing hangs past the crust
+            for y in range(bottomY, crust_bottom):
+                blocks.pop((x, y, z), None)
+            new_bottomY = crust_bottom
 
         col_bottom[(x, z)] = (new_bottomY, topY, r, localR)
-        new_columns.append((x, z, topY, target, r, localR))
+        new_columns.append((x, z, topY, topY - new_bottomY, r, localR))
     columns[:] = new_columns
 
 
@@ -159,12 +196,16 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
                        Y level. Outline is still irregular.
     top_thickness_range - (min, max) number of honeycomb-crust layers,
                        before the oak-frame/rock gradient starts.
-    num_drips / drip_density - see grass.py; here each "drip" is a hanging
-                       gob of honey, distinct from the hex-cell tips.
+    num_drips / drip_density - unused by this theme (kept only so every
+                       theme's generate_island shares the same CLI/run_cli
+                       signature) - the hex tubes are the whole underside
+                       shape, not a base taper with separate hanging drips.
     decorate_top     - if True, scatters meadow flowers, beehives and small
                        birch trees on top.
-    decorate_underside - hex-cell shaping, honey drips and fringe on the
-                       underside. On by default.
+    decorate_underside - unused by this theme, for the same reason as
+                       num_drips above - the hex-tube tessellation always
+                       runs; there's no separate underside decoration to
+                       toggle.
     """
     size, half, radius = common.grid_dims(diameter)
 
@@ -187,24 +228,13 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
     )
-    # tessellate the underside into hanging hex cells of varying depth,
-    # framed at their walls, dripping honey at their tips - see
-    # _honeycomb_cells above.
-    _honeycomb_cells(blocks, col_bottom, columns, seed, max_depth)
-
-    if decorate_underside:
-        def drip_block(rng, t, is_tip):
-            return "minecraft:honey_block" if is_tip else "minecraft:honeycomb_block"
-
-        common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
-                               num_drips, drip_density, drip_block)
-
-        # a few bare honey droplets clinging near the outer rim
-        common.decorate_rim_underside(
-            rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:honey_block",
-            r_frac_threshold=0.55, chance=0.14, length_range=(1, 2),
-        )
+    # tessellate the underside into hollow hex tubes stepping down with the
+    # island's own radius-based taper - see _honeycomb_cells above. This is
+    # the theme's whole shape, not an optional flourish, so it always runs
+    # regardless of decorate_underside - there are no separate hanging
+    # drips/rim spikes layered on top of it (the hex tubes themselves are
+    # the "shape", not dripstone-style stalactites).
+    _honeycomb_cells(blocks, col_bottom, columns, max_depth, top_thickness_range[0])
 
     if decorate_top:
         # sparse wildflowers and a beehive or two on the top surface
@@ -252,8 +282,6 @@ def generate_scene(seed=0):
 BLOCK_COLORS = {
     "minecraft:honeycomb_block": "#e8ab3f",
     "minecraft:oak_planks": "#b8853f",
-    "minecraft:stone": "#8a8a8a",
-    "minecraft:honey_block": "#f0a91f",
     "minecraft:beehive": "#d9a441",
     "minecraft:dandelion": "#e8c93a",
     "minecraft:poppy": "#c0392b",
@@ -278,8 +306,7 @@ def main():
         block_colors=BLOCK_COLORS,
         single_title_fn=lambda diameter, seed: f"honeycomb hive floating island (d={diameter}, seed={seed})",
         scene_title_fn=lambda seed: f"honeycomb hive multi-island demo scene (seed={seed})",
-        num_drips_help=("number of hanging honey drips (default: auto-scales with the "
-                         "island's rim geometry - see --drip-density)"),
+        num_drips_help="unused by this theme - the hex-tube grid is the whole underside shape",
         decorate_top_help="scatter wildflowers, beehives and birch trees on top (off by default)",
     )
 
