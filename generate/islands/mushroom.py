@@ -28,38 +28,84 @@ import common
 
 STEM_BLOCK = "minecraft:mushroom_stem"
 
-# Mostly red concrete with white-concrete spots on a regular (x, z) lattice
-# (see CAP_SPOT_SPACING), mimicking the actual red mushroom block's own
-# dot texture - evenly spaced, not scattered - with a little randomness
-# from CAP_SPOT_CHANCE (not every lattice point actually shows a dot) so it
-# doesn't read as a rigid, mechanical grid. A deliberate, explicit exception
-# to this project's usual "one solid top color" rule for these islands,
-# since the whole point here is to read as that specific block's own
-# pattern rather than a flat color.
+# Mostly red concrete with scattered white-concrete spots, mimicking the
+# actual red mushroom block's own dot texture. The cap is carved fully
+# solid CAP_BLOCK first (see generate_island/_cap_and_stem); spots are then
+# scattered across its real outer surface as a separate pass
+# (_scatter_cap_spots below) - a dart-throwing / blue-noise placement over
+# the cap's actual exposed skin (top, underside, AND the rounded rim wall
+# between them), not a flat (x, z) plane - so spots read as small dots
+# wherever the surface is actually visible, never as a streak drilled
+# straight down through a column's full depth regardless of which face
+# that depth is facing. A deliberate, explicit exception to this project's
+# usual "one solid top color" rule for these islands, since the whole
+# point here is to read as that specific block's own pattern rather than a
+# flat color.
 CAP_BLOCK = "minecraft:red_concrete"
 CAP_SPOT_BLOCK = "minecraft:white_concrete"
-CAP_SPOT_SPACING = 3   # blocks between candidate spot columns, each axis
-CAP_SPOT_CHANCE = 0.65  # chance a given lattice column actually shows a spot
+CAP_SPOT_MIN_DIST = 5.0  # minimum 3D spacing (along the surface) kept between two spots
 
 
-def _make_cap_picker(rng):
-    """Returns pick_cap_crust(x, z): red concrete, with white-concrete
-    spots on the regular CAP_SPOT_SPACING lattice. Each eligible (x, z)
-    column rolls ONCE whether it actually shows a spot (cached here, in
-    `decided`) rather than re-rolling per voxel, so a spot column reads as
-    one clean vertical streak of white top to bottom through the crust,
-    not per-voxel flicker."""
-    decided = {}
+def _cap_surface_voxels(blocks, columns, col_bottom):
+    """Returns every cap voxel (x, y, z) that is exposed to air on at least
+    one of its 6 faces - the cap's actual outer skin. This is the topology
+    fix over picking spot columns by (x, z) alone: a column near the rim is
+    mostly SIDE wall (its "depth" faces sideways, not down), so a naive
+    per-column pick painted a vertical white streak down that side wall.
+    Working voxel-by-voxel against real exposure means a rim spot paints
+    only the handful of actually-visible side-wall voxels around it, same
+    as a top or underside spot only paints the visible cap surface there -
+    the shape decides where the skin is, not a flat XZ grid.
+    """
+    surface = []
+    for (x, z, topY, depth, r, localR) in columns:
+        frac = r / localR if localR else 1.0
+        if frac < 0.18:
+            continue  # stem column - no spots
+        bottomY, _, _, _ = col_bottom[(x, z)]
+        for y in range(bottomY, topY + 1):
+            if blocks.get((x, y, z)) != CAP_BLOCK:
+                continue
+            exposed = (
+                blocks.get((x + 1, y, z)) is None or blocks.get((x - 1, y, z)) is None or
+                blocks.get((x, y, z + 1)) is None or blocks.get((x, y, z - 1)) is None or
+                blocks.get((x, y + 1, z)) is None or blocks.get((x, y - 1, z)) is None
+            )
+            if exposed:
+                surface.append((x, y, z))
+    return surface
 
-    def pick_cap_crust(x, z):
-        if x % CAP_SPOT_SPACING != 0 or z % CAP_SPOT_SPACING != 0:
-            return CAP_BLOCK
-        key = (x, z)
-        if key not in decided:
-            decided[key] = rng.random() < CAP_SPOT_CHANCE
-        return CAP_SPOT_BLOCK if decided[key] else CAP_BLOCK
 
-    return pick_cap_crust
+def _scatter_cap_spots(blocks, columns, col_bottom, rng):
+    """Post-process pass over the already-solid cap (see generate_island:
+    the whole shape is carved plain CAP_BLOCK first, reshaped into the flat
+    cap + stem by _cap_and_stem, THEN this runs): visits the cap's real
+    exposed surface (see _cap_surface_voxels) in random order and paints a
+    single white voxel wherever a surface voxel ends up at least
+    CAP_SPOT_MIN_DIST from every spot already placed. Single voxels, not a
+    multi-block blob - a 7-voxel plus-shaped blob at every spot read as far
+    too much white overall, closer to a checkerboard than scattered dots.
+
+    This is simple dart-throwing (rejection-sampled blue noise): visiting
+    surface voxels in shuffled order and only ever rejecting a candidate
+    for being too close to an existing spot means spots keep getting
+    proposed in whatever open red surface is left until one lands, so they
+    end up well spread across top, underside, and rim alike, while never
+    clustering closer than CAP_SPOT_MIN_DIST apart.
+    """
+    surface = _cap_surface_voxels(blocks, columns, col_bottom)
+    order = list(range(len(surface)))
+    rng.shuffle(order)
+
+    spot_centers = []
+    min_dist_sq = CAP_SPOT_MIN_DIST ** 2
+    for i in order:
+        x, y, z = surface[i]
+        if any((x - sx) ** 2 + (y - sy) ** 2 + (z - sz) ** 2 < min_dist_sq
+               for sx, sy, sz in spot_centers):
+            continue
+        spot_centers.append((x, y, z))
+        blocks[(x, y, z)] = CAP_SPOT_BLOCK
 
 
 def _cap_and_stem(blocks, col_bottom, columns, rng, max_depth):
@@ -121,13 +167,11 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     """
     size, half, radius = common.grid_dims(diameter)
 
-    pick_cap_crust = _make_cap_picker(random.Random(seed + 31))
-
     def top_block(rng, x, z, xi, zi):
-        return pick_cap_crust(x, z)
+        return CAP_BLOCK
 
     def body_block(rng, x, z, xi, zi, y_offset, thickness, total_depth):
-        return pick_cap_crust(x, z)
+        return CAP_BLOCK
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -137,9 +181,15 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         taper_strength=0.9, taper_exponent=1.6,
     )
     # reshape the smooth cone into a flat cap + central stem (recolored solid
-    # white) - see _cap_and_stem above. Everything carved is already solid
-    # red mushroom block, so this is the only underside shaping this theme does.
+    # white) - see _cap_and_stem above. Everything carved is still plain
+    # solid CAP_BLOCK at this point, so this is the only underside shaping
+    # this theme does.
     _cap_and_stem(blocks, col_bottom, columns, rng, max_depth)
+    # now scatter white spots across the finished, solid-red shape - see
+    # _scatter_cap_spots above. A separate rng from carve_columns' own (same
+    # convention as the other themes' throwaway secondary RNGs) so spot
+    # placement doesn't shift when unrelated carve-side randomness changes.
+    _scatter_cap_spots(blocks, columns, col_bottom, random.Random(seed + 31))
 
     if decorate_top:
         # sparse small mushrooms on the top surface

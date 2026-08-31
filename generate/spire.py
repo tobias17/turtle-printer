@@ -105,10 +105,18 @@ STAIR_AMP = 2.5
 
 # --- crown / eye ----------------------------------------------------------
 COLLAR_Z0, COLLAR_Z1 = SHAFT_TOP, SHAFT_TOP + round(4 * HEIGHT_SCALE)
-COLLAR_R = TIERS[-1]["r1"] + 5.5 * DIAM_SCALE
-EYE_R = 7.0 * DIAM_SCALE          # placeholder orb radius -- orange wool for now
-GAP_TO_ORB = 8.0 * DIAM_SCALE     # air gap kept between the major claw tips and the orb's surface
-EYE_CENTER_Z = COLLAR_Z1 + round(19 * HEIGHT_SCALE)
+# the +3.0 flare is kept unscaled by DIAM_SCALE (only the shaft-top radius
+# feeding into it is already scaled) -- otherwise the collar platform the
+# claws spring from balloons out disproportionately at DIAM_SCALE > 1.
+COLLAR_R = TIERS[-1]["r1"] + 3.0
+# true draconic-evolution energy ball radius -- a real, fixed-size structure
+# the orb is standing in for (orange wool placeholder texture for now), so
+# this stays fixed at its real radius rather than scaling with DIAM_SCALE
+# like the rest of the tower's ornamentation does.
+EYE_R = 7.0
+# the orb's actual center height isn't a fixed constant -- build_crown
+# returns it (the major claws' own tip Z), so the orb always lands exactly
+# level with where the claws curl in to meet it. See generate_spire.
 
 BLOCK_NAMES = {
     WALL: "minecraft:black_concrete",
@@ -173,31 +181,6 @@ def build_spike(grid, x0, y0, z0, ang_xy, tilt0_deg, tilt1_deg, length, r0, bloc
         z += dz * step_len
         r = max(1.3, r0 * (1 - t) ** 1.2)
         # tiny noise_amp: smooth tapering horn/claw, not a scribbled blob
-        stamp_sphere(grid, int(round(x)), int(round(y)), int(round(z)), r, block,
-                     seed=seed, noise_amp=0.15)
-    return int(round(x)), int(round(y)), int(round(z))
-
-
-def build_spike_to(grid, x0, y0, z0, tx, ty, tz, r0, block, seed, bow=5.0):
-    """Marches a tapering claw from (x0,y0,z0) that's guaranteed to land
-    exactly on the target point (tx,ty,tz) -- a straight line bowed
-    outward at the midpoint (quadratic, `bow` blocks at t=0.5, zero at
-    both ends) so it reads as a claw curling in to grip something at the
-    target, rather than a floating gap between the spike and its target."""
-    dx0, dy0, dz0 = tx - x0, ty - y0, tz - z0
-    length = math.sqrt(dx0 * dx0 + dy0 * dy0 + dz0 * dz0)
-    # same overlap-guaranteeing spacing as build_spike above
-    steps = max(10, math.ceil(length / 0.75))
-    ang = math.atan2(y0 - CY, x0 - CX) if (x0 != CX or y0 != CY) else 0.0
-    ox, oy = math.cos(ang), math.sin(ang)
-    x = y = z = 0.0
-    for s in range(steps + 1):
-        t = s / steps
-        bow_amt = bow * 4 * t * (1 - t)
-        x = x0 + dx0 * t + ox * bow_amt
-        y = y0 + dy0 * t + oy * bow_amt
-        z = z0 + dz0 * t
-        r = max(1.3, r0 * (1 - t) ** 1.1 + 0.6)
         stamp_sphere(grid, int(round(x)), int(round(y)), int(round(z)), r, block,
                      seed=seed, noise_amp=0.15)
     return int(round(x)), int(round(y)), int(round(z))
@@ -276,7 +259,8 @@ def build_tower(grid, seed):
 # ---------------------------------------------------------------------------
 # 2) Crown: a solid collar platform (roof of the shaft, floor of the top
 #    chamber) ringed with tapering black spikes -- most short, four tall
-#    ones reaching up around the eye.
+#    ones reaching up around the eye. Returns the major claws' own tip Z,
+#    so the orb (built afterward) can be centered at exactly that height.
 # ---------------------------------------------------------------------------
 def build_crown(grid, seed):
     for z in range(COLLAR_Z0, COLLAR_Z1):
@@ -290,35 +274,37 @@ def build_crown(grid, seed):
         grid[x0:x1, y0:y1, z][dist <= COLLAR_R] = WALL
 
     rng = np.random.RandomState(seed + 900)
-    n_minor, n_major = 10, 4
-    # offset by a fixed 9 degrees (plus small jitter) so none of the 10 minor
-    # spikes lands on top of a major pillar -- 10 and 4 both divide 360, so
-    # without this offset two of them (at 0 deg/East and 180 deg/West) sit
-    # right against a major pillar and read as one doubled-up spike
-    minor_angles = [(2 * math.pi * i / n_minor) + math.radians(9) + rng.uniform(-0.05, 0.05)
-                     for i in range(n_minor)]
-    # major pillars sit exactly at the four cardinal (N/S/E/W) directions, no jitter
-    major_angles = [i * math.pi / 2 for i in range(n_major)]
 
-    for i, ang in enumerate(minor_angles):
-        bx = CX + int(round((COLLAR_R - 3) * math.cos(ang)))
-        by = CY + int(round((COLLAR_R - 3) * math.sin(ang)))
-        build_spike(grid, bx, by, COLLAR_Z1 - 2, ang, 58, 34, 13.0 * DIAM_SCALE, 2.6 * DIAM_SCALE,
-                    WALL, seed=seed + 30 + i)
-
-    # major pillars: each one is aimed at a point held GAP_TO_ORB blocks off
-    # the orb's own surface (rather than an independent tilt path), so the
-    # gap between pillar tip and orb is controlled directly instead of being
-    # a side effect of the tilt/length numbers.
-    beta = math.radians(90)   # polar angle from the orb's top pole; 90 = its equator (comes up beside it)
-    target_r = EYE_R + GAP_TO_ORB
+    # the 4 prominent claws -- one at each cardinal (N/S/E/W) direction.
+    # tilt starts leaning outward at the base (tilt0, positive = away from
+    # the tower) then swings past straight-up to lean inward near the tip
+    # (tilt1, negative = back toward the center axis) -- see build_spike --
+    # so each one traces a real hooked claw/horn silhouette curling up and
+    # in toward the orb, instead of a straight finger or a bulge that still
+    # ends up pointing straight out. Their tip Z is returned so the orb can
+    # be centered at exactly that height (see generate_spire) rather than
+    # an independently-guessed constant that could drift out of alignment
+    # with wherever the claws actually end up.
+    major_angles = [i * math.pi / 2 for i in range(4)]
+    tip_z = COLLAR_Z1
     for i, ang in enumerate(major_angles):
-        bx = CX + int(round((COLLAR_R + 1) * math.cos(ang)))
-        by = CY + int(round((COLLAR_R + 1) * math.sin(ang)))
-        tx = CX + target_r * math.sin(beta) * math.cos(ang)
-        ty = CY + target_r * math.sin(beta) * math.sin(ang)
-        tz = EYE_CENTER_Z + target_r * math.cos(beta)
-        build_spike_to(grid, bx, by, COLLAR_Z1 - 2, tx, ty, tz, 3.4 * DIAM_SCALE, WALL, seed=seed + 60 + i)
+        bx = CX + int(round((COLLAR_R - 1) * math.cos(ang)))
+        by = CY + int(round((COLLAR_R - 1) * math.sin(ang)))
+        _, _, tip_z = build_spike(grid, bx, by, COLLAR_Z1 - 2, ang, 55, -35,
+                                   11.0 * DIAM_SCALE, 3.0 * DIAM_SCALE, WALL, seed=seed + 60 + i)
+
+    # a handful of smaller accent claws tucked at the OFF-cardinal angles,
+    # between each pair of major claws -- same inward-curling shape, just
+    # far shorter/thinner and never reaching anywhere near the orb, so they
+    # stay pure minor detail and never compete with the 4 prominent ones.
+    minor_angles = [math.pi / 4 + i * math.pi / 2 + rng.uniform(-0.1, 0.1) for i in range(4)]
+    for i, ang in enumerate(minor_angles):
+        bx = CX + int(round((COLLAR_R - 4) * math.cos(ang)))
+        by = CY + int(round((COLLAR_R - 4) * math.sin(ang)))
+        build_spike(grid, bx, by, COLLAR_Z1 - 2, ang, 50, -10,
+                    8.0 * DIAM_SCALE, 2.0 * DIAM_SCALE, WALL, seed=seed + 30 + i)
+
+    return tip_z
 
 
 # ---------------------------------------------------------------------------
@@ -359,9 +345,9 @@ def generate_spire(seed=3):
     t0 = time.time()
     build_tower(grid, seed)
     print(f"tower done ({time.time() - t0:.1f}s)")
-    build_crown(grid, seed)
+    eye_center_z = build_crown(grid, seed)
     print(f"crown done ({time.time() - t0:.1f}s)")
-    build_eye(grid, seed, center_z=EYE_CENTER_Z)
+    build_eye(grid, seed, center_z=eye_center_z)
     print(f"eye done ({time.time() - t0:.1f}s)")
 
     counts = {name: int((grid == internal_id).sum()) for internal_id, name in BLOCK_NAMES.items()}
