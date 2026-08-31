@@ -4,7 +4,8 @@ Mesa / Badlands Floating Island Generator for Minecraft
 
 A badlands-mesa island variant: a red sand crust over a solid orange-
 terracotta cap, then thin bands of terracotta (like real badlands cliffs)
-into the plain rock core every island theme shares underneath. The color
+fading into a deep red-terracotta core - no plain rock/stone anywhere in
+this theme's palette. The color
 bands themselves are ported from vanilla Minecraft's actual generation
 algorithm (decompiled BadlandsSurfaceBuilder.generateBands: a plain
 terracotta backdrop peppered with single-block orange flecks, a handful of
@@ -51,8 +52,10 @@ ORANGE_CAP_RANGE = (3, 8)  # a solid orange-terracotta cap just under the
                             # crust, before the banded cycle starts - mirrors
                             # vanilla's own solid near-surface cap
 
-STONE_FADE_START = 0.82  # fraction of a column's own depth where it starts
-                          # blending into the plain rock core near the bottom
+CORE_FADE_START = 0.82  # fraction of a column's own depth where it starts
+                         # blending into a deep red-terracotta core near the
+                         # bottom, instead of the plain rock core other
+                         # themes share (kept out of this theme's palette)
 
 NUM_TERRACES = 4  # how many BOLD shelves the silhouette steps through,
                    # regardless of size - independent of the fine color
@@ -205,14 +208,16 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         depth_blocks -= orange_cap
         jitter = gradient_noise[xi, zi] * 0.9 + speckle_noise[xi, zi] * 0.5
         t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        # blend into the plain rock core near the very bottom of this
-        # column's own taper. The threshold itself is nudged by the same
-        # smooth per-column jitter as the band boundaries above (not a
-        # fresh per-voxel dice roll), so the transition is a wavy, eroded
-        # edge rather than a razor ring, without redrawing randomness for
-        # every voxel - see AGENTS.md rule 3 on why that distinction matters.
-        if t_grad > STONE_FADE_START + jitter * 0.02:
-            return "minecraft:stone"
+        # blend into a deep red-terracotta core near the very bottom of this
+        # column's own taper, instead of the plain rock core other themes
+        # share (deliberately kept out of this theme's palette entirely).
+        # The threshold itself is nudged by the same smooth per-column
+        # jitter as the band boundaries above (not a fresh per-voxel dice
+        # roll), so the transition is a wavy, eroded edge rather than a
+        # razor ring, without redrawing randomness for every voxel - see
+        # AGENTS.md rule 3 on why that distinction matters.
+        if t_grad > CORE_FADE_START + jitter * 0.02:
+            return "minecraft:red_terracotta"
         return pick_gradient(clay_bands, depth_blocks, jitter=jitter)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
@@ -263,7 +268,6 @@ BLOCK_COLORS = {
     "minecraft:terracotta": "#9c5148",
     "minecraft:yellow_terracotta": "#d4bb3c",
     "minecraft:white_terracotta": "#d9cfc0",
-    "minecraft:stone": "#8a8a8a",
 }
 
 

@@ -6,10 +6,13 @@ A volcanic-themed island variant: dark igneous stone instead of
 grass/dirt/stone. Deliberately simple palette - a grey basalt crust on
 top, black rock underneath, with no gradient banding or per-voxel noise -
 plus sparse single-block magma accents scattered through the body (each
-one an isolated voxel, never a vein/cluster) as the one deliberate point
-of visual interest, not bulk ore texture. The interior isn't meant to be
-seen in depth (these islands end up hollow once built), so most of the
-visual interest still comes from the silhouette/taper/drip shape and the
+one an isolated voxel, never a vein/cluster) as one deliberate point of
+visual interest, not bulk ore texture. The hanging underside drips (see
+common.generate_drips) are the other: some are solid magma "lava drips"
+instead of black rock, a real dripstone-shaped icicle of magma rather than
+a wandering streak through the body. The interior isn't meant to be seen
+in depth (these islands end up hollow once built), so most of the visual
+interest still comes from the silhouette/taper/drip shape and the
 crust/body color contrast. A slightly sharper underside taper than
 grass.py's - a rocky mass, not just a recolored copy of the same shape.
 Meant to sit around spire.py's dark tower.
@@ -31,8 +34,6 @@ Usage:
     python volcano.py --diameter 40 --seed 7
 """
 
-import math
-
 import common
 
 # ---------------------------------------------------------------------------
@@ -47,53 +48,38 @@ import common
 TOP_CRUST_BLOCK = "projectred_exploration:stone_basalt"
 BODY_BLOCK = "minecraft:blackstone"
 
-# Magma accents through the body - mostly single isolated voxels (never a
-# wide vein or blob, that's the "ore" look this theme deliberately avoids
-# elsewhere), plus occasional short streaks (_magma_streaks below) so a
-# handful of columns get a thin, wandering seam of magma instead of just a
-# scattered dot. Still low enough odds that most of the body has none.
+# Sparse magma accents through the body - single isolated voxels, never a
+# vein or cluster (that's the "ore" look this theme deliberately avoids
+# elsewhere). Low enough odds that most columns have none at all.
 ACCENT_BLOCK = "minecraft:magma_block"
 ACCENT_CHANCE = 0.03
 
-# A handful of columns instead grow a short streak of consecutive magma
-# blocks - a thin lava seam reading as one continuous line, never widening
-# into a cluster - rather than just the single-voxel sprinkle above.
-STREAK_CHANCE = 0.05
-STREAK_LEN_RANGE = (3, 6)
+# Some of the hanging underside drips (see common.generate_drips) are solid
+# magma "lava drips" instead of black rock - a proper dripstone-shaped
+# icicle of magma, not the wandering random-line streak this replaced
+# (which read as a messy interlace rather than a real dripstone structure).
+LAVA_DRIP_CHANCE = 0.35
 
 
-def _magma_streaks(blocks, columns, col_bottom, rng, top_thickness_range):
-    """Occasional short streaks of magma block through the body - a few
-    consecutive blocks along a slightly wandering line, distinct from the
-    single-isolated-voxel sprinkle in body_block. Each streak stays a
-    single line (never widens), so it reads as a thin lava seam rather than
-    an ore cluster. Only ever recolors existing BODY_BLOCK voxels (never
-    crust or air), so it can't punch through the crust or hang in empty
-    space."""
-    min_thick = top_thickness_range[0]
-    eligible = [c for c in columns if c[3] > min_thick + STREAK_LEN_RANGE[0]]
-    n_streaks = max(1, round(len(eligible) * STREAK_CHANCE))
-    rng.shuffle(eligible)
-    for (x, z, topY, depth, r, localR) in eligible[:n_streaks]:
-        bottomY, _, _, _ = col_bottom[(x, z)]
-        body_top = topY - min_thick       # just below the guaranteed-crust band
-        body_bottom = bottomY + 1
-        if body_top <= body_bottom:
-            continue
-        length = min(rng.randint(*STREAK_LEN_RANGE), body_top - body_bottom + 1)
-        start_y = rng.randint(body_bottom, body_top)
-        fx, fz = float(x), float(z)
-        angle = rng.uniform(0, 2 * math.pi)
-        for i in range(length):
-            y = start_y - i
-            if y < body_bottom:
-                break
-            bx, bz = round(fx), round(fz)
-            if blocks.get((bx, y, bz)) == BODY_BLOCK:
-                blocks[(bx, y, bz)] = ACCENT_BLOCK
-            angle += rng.uniform(-0.3, 0.3)
-            fx += math.cos(angle) * rng.uniform(0.0, 0.6)
-            fz += math.sin(angle) * rng.uniform(0.0, 0.6)
+def _make_drip_block():
+    """Returns drip_block(rng, t, is_tip) for common.generate_drips: each
+    individual drip is either solid ACCENT_BLOCK (a lava drip) or solid
+    BODY_BLOCK (a rock drip), decided once per drip rather than per voxel,
+    so a whole icicle reads as one clean dripstone structure of one
+    material. generate_drips gives no explicit "new drip started" signal,
+    but t resets to exactly 0.0 at the start of every drip and is otherwise
+    non-decreasing within one - so "t is 0.0 right after a call where t was
+    not 0.0" reliably marks a new drip, without needing to touch
+    common.py."""
+    state = {"last_t": None, "is_lava": False}
+
+    def drip_block(rng, t, is_tip):
+        if state["last_t"] is None or (t == 0.0 and state["last_t"] != 0.0):
+            state["is_lava"] = rng.random() < LAVA_DRIP_CHANCE
+        state["last_t"] = t
+        return ACCENT_BLOCK if state["is_lava"] else BODY_BLOCK
+
+    return drip_block
 
 
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
@@ -134,11 +120,8 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         taper_strength=0.9, taper_exponent=0.5,
     )
 
-    _magma_streaks(blocks, columns, col_bottom, rng, top_thickness_range)
-
     if decorate_underside:
-        def drip_block(rng, t, is_tip):
-            return BODY_BLOCK
+        drip_block = _make_drip_block()
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)

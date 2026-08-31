@@ -34,15 +34,16 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Spruce-plank crust for the platform itself. The tube walls below it are a
-# single uniform frame material (see _honeycomb_cells) rather than a
-# depth-based gradient - there's deliberately no third/deeper band here,
-# since every below-crust column is either that one wall material or empty
-# air, never a smooth color transition.
-GRADIENT = [
-    "minecraft:spruce_planks",
-    "biomesoplenty:honey_block",
-]
+# Spruce-plank crust for the platform itself - a THIN band only (exactly
+# top_thickness_range deep, no gradient blend fading gradually into the
+# honey below - a blend would leave a deep band of "still technically
+# spruce" reaching much further down than the crust was meant to be, which
+# is exactly the "planks going way down" bug this replaced). Everything
+# below that thin crust is honey_block outright, and _honeycomb_cells below
+# reads this exact boundary back (walking down from the top while it's
+# still spruce_planks) to know exactly how far up its walls must reach.
+CRUST_BLOCK = "minecraft:spruce_planks"
+BODY_BLOCK = "biomesoplenty:honey_block"
 
 HEX_SIZE = 5.0  # world-space radius of one honeycomb cell, in blocks
 SQRT3 = math.sqrt(3.0)
@@ -52,21 +53,9 @@ TAPER_POWER = 1.0  # exponent on (1 - radius_fraction) used to set each
                     # rim - see cell_depth), with no per-cell noise anywhere
 
 
-def pick_gradient(rng, t, jitter=0.0):
-    """Picks a block for depth-fraction t in [0, 1] (0 = right at the
-    spruce-plank crust, 1 = deepest rock). `jitter` (driven only by smooth
-    per-column noise) nudges the whole column toward a neighboring shade so
-    the band edge is wavy instead of a razor-straight ring, without
-    per-voxel dithering."""
-    n = len(GRADIENT)
-    pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    idx = int(round(min(max(pos, 0.0), n - 1)))
-    return GRADIENT[idx]
-
-
 def pick_comb_crust(rng):
     """Top-crust block: solid spruce plank, no fleck - the crust is a flat platform."""
-    return "minecraft:spruce_planks"
+    return CRUST_BLOCK
 
 
 def _hex_cell(x, z, size):
@@ -171,7 +160,7 @@ def _honeycomb_cells(blocks, col_bottom, columns, max_depth, crust_depth):
         # the shared minimum crust_depth - guarantees the wall touches the
         # wood exactly, whatever this particular column's crust thickness is
         crust_bottom = topY
-        while blocks.get((x, crust_bottom - 1, z)) == "minecraft:spruce_planks":
+        while blocks.get((x, crust_bottom - 1, z)) == CRUST_BLOCK:
             crust_bottom -= 1
 
         if target > 0 and _is_wall(x, z, HEX_SIZE):
@@ -182,7 +171,7 @@ def _honeycomb_cells(blocks, col_bottom, columns, max_depth, crust_depth):
             for y in range(bottomY, new_bottomY):
                 blocks.pop((x, y, z), None)
             for y in range(new_bottomY, crust_bottom):
-                blocks[(x, y, z)] = "biomesoplenty:honey_block"
+                blocks[(x, y, z)] = BODY_BLOCK
         else:
             # hollow interior, OR a wall whose cell has zero tube length
             # this close to the rim - either way, clear the whole shaft
@@ -206,7 +195,8 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     flat_top        - if True (default), the top surface is a single flat
                        Y level. Outline is still irregular.
     top_thickness_range - (min, max) number of spruce-plank crust layers,
-                       before the oak-frame/rock gradient starts.
+                       before the honey body starts. No blend between the
+                       two - see CRUST_BLOCK/BODY_BLOCK above.
     num_drips / drip_density - unused by this theme (kept only so every
                        theme's generate_island shares the same CLI/run_cli
                        signature) - the hex tubes are the whole underside
@@ -220,21 +210,11 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     """
     size, half, radius = common.grid_dims(diameter)
 
-    def grid_for(cell_blocks, minimum=6):
-        return max(minimum, size // cell_blocks)
-
-    gradient_noise = common.value_noise_2d(size, grid_for(4, 8), seed + 9) * 1.8
-    speckle_noise = common.value_noise_2d(size, grid_for(2, 12), seed + 13) * 1.1
-
     def top_block(rng, x, z, xi, zi):
         return pick_comb_crust(rng)
 
     def body_block(rng, x, z, xi, zi, y_offset, thickness, total_depth):
-        if y_offset < thickness:
-            return pick_comb_crust(rng)
-        g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
-        t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        return pick_gradient(rng, t_grad, jitter=g_jitter)
+        return pick_comb_crust(rng) if y_offset < thickness else BODY_BLOCK
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,

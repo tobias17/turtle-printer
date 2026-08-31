@@ -3,7 +3,7 @@ Ossuary Ribcage Floating Island Generator for Minecraft
 ===========================================================
 
 A bleached bone-wasteland island variant: pale bone crust over charred
-coal, grading to plain deepslate at the very core. Structurally it inverts
+coal - just those two blocks, no plain-stone core. Structurally it inverts
 every other theme's idea: instead of a solid mass with one deep feature
 exempted (crystal's spikes, prismarine's towers), the ENTIRE underside is
 first hollowed out to a thin ceiling right under the crust, and only a
@@ -30,15 +30,14 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Bone crust down through charred coal to plain deepslate at the core -
-# kept to 3 solid bands (no fleck/dither). The soul lantern is reserved
-# exclusively for the ribcage's convergence point (see _rib_cage), never
-# part of the bulk gradient, so it reads as one deliberate glowing feature
-# rather than more bulk texture.
+# Bone crust down through charred coal at the core - just those two blocks
+# (no plain-stone/deepslate band), kept to 2 solid bands (no fleck/dither).
+# The soul lantern is reserved exclusively for the ribcage's convergence
+# point (see _rib_cage), never part of the bulk gradient, so it reads as
+# one deliberate glowing feature rather than more bulk texture.
 GRADIENT = [
     "minecraft:bone_block",
     "minecraft:coal_block",
-    "minecraft:deepslate",
 ]
 
 CEILING_DEPTH_FRAC = 0.15  # how much of a shallow ceiling every column
@@ -200,7 +199,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
     flat_top        - if True (default), the top surface is a single flat
                        Y level. Outline is still irregular.
     top_thickness_range - (min, max) number of bone-crust layers, before
-                       the coal/deepslate gradient starts.
+                       the coal band starts.
     num_drips / drip_density - see grass.py; here each "drip" is a small
                        hanging bone spur off the thin ceiling, distinct
                        from the main ribs.
@@ -281,7 +280,6 @@ def generate_scene(seed=0):
 BLOCK_COLORS = {
     "minecraft:bone_block": "#e4dcc0",
     "minecraft:coal_block": "#1c1c1c",
-    "minecraft:deepslate": "#393a3d",
     "minecraft:soul_lantern": "#5fd6cf",
     "minecraft:wither_rose": "#2e2015",
     "minecraft:skeleton_skull": "#d8d4c0",

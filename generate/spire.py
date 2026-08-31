@@ -52,11 +52,16 @@ import numpy as np
 from utils import Atlas, Structure, render_screenshot, spherical_bump_noise
 
 # ---------------------------------------------------------------------------
-# Grid setup -- sized for a ~160 block tall spire with clawed crown spikes
+# Grid setup -- sized for a ~160 block tall spire with clawed crown spikes,
+# scaled up 1.5x diameter / 1.2x height (DIAM_SCALE/HEIGHT_SCALE below)
 # ---------------------------------------------------------------------------
 (AIR, WALL, ORB) = range(3)
 
-SIZE_X, SIZE_Y, SIZE_Z = 140, 140, 200   # Z is "up" internally, swapped to Y at export
+DIAM_SCALE = 1.5   # multiplies every radius in the profile below
+HEIGHT_SCALE = 1.2  # multiplies every Z (height) value in the profile below
+
+SIZE_X, SIZE_Y = round(140 * DIAM_SCALE), round(140 * DIAM_SCALE)
+SIZE_Z = round(200 * HEIGHT_SCALE)   # Z is "up" internally, swapped to Y at export
 CX, CY = SIZE_X // 2, SIZE_Y // 2
 
 # --- shaft profile: ONE continuous taper (each segment's r0 matches the
@@ -69,12 +74,24 @@ WALL_THICK = 3
 N_RIDGES = 6
 RIDGE_AMP = 0.05   # kept low so the shaft reads as circular, just a hint of fluting
 
-TIERS = [
+# Base (unscaled) profile, scaled by DIAM_SCALE (radii) / HEIGHT_SCALE
+# (heights) below. Z boundaries are scaled as a shared, once-rounded list
+# rather than independently per tier, so consecutive tiers still line up
+# exactly after rounding (see _validate_profile) instead of leaving a
+# rounding gap/overlap between them.
+_BASE_TIERS = [
     dict(z0=0,   z1=15,  r0=21.6, r1=18.0),   # foundation -- flat-bottomed, sits on the island
     dict(z0=15,  z1=45,  r0=18.0, r1=14.0),
     dict(z0=45,  z1=71,  r0=14.0, r1=11.0),
     dict(z0=71,  z1=93,  r0=11.0, r1=9.0),
     dict(z0=93,  z1=115, r0=9.0,  r1=7.5),
+]
+_boundaries = sorted({t["z0"] for t in _BASE_TIERS} | {t["z1"] for t in _BASE_TIERS})
+_scaled_boundaries = [round(b * HEIGHT_SCALE) for b in _boundaries]
+TIERS = [
+    dict(z0=_scaled_boundaries[i], z1=_scaled_boundaries[i + 1],
+         r0=t["r0"] * DIAM_SCALE, r1=t["r1"] * DIAM_SCALE)
+    for i, t in enumerate(_BASE_TIERS)
 ]
 SHAFT_TOP = TIERS[-1]["z1"]
 
@@ -87,11 +104,11 @@ STAIR_PITCH = 23.0
 STAIR_AMP = 2.5
 
 # --- crown / eye ----------------------------------------------------------
-COLLAR_Z0, COLLAR_Z1 = SHAFT_TOP, SHAFT_TOP + 4
-COLLAR_R = TIERS[-1]["r1"] + 5.5
-EYE_R = 7.0                     # placeholder orb radius -- orange wool for now
-GAP_TO_ORB = 8.0                # air gap kept between the major claw tips and the orb's surface
-EYE_CENTER_Z = COLLAR_Z1 + 19
+COLLAR_Z0, COLLAR_Z1 = SHAFT_TOP, SHAFT_TOP + round(4 * HEIGHT_SCALE)
+COLLAR_R = TIERS[-1]["r1"] + 5.5 * DIAM_SCALE
+EYE_R = 7.0 * DIAM_SCALE          # placeholder orb radius -- orange wool for now
+GAP_TO_ORB = 8.0 * DIAM_SCALE     # air gap kept between the major claw tips and the orb's surface
+EYE_CENTER_Z = COLLAR_Z1 + round(19 * HEIGHT_SCALE)
 
 BLOCK_NAMES = {
     WALL: "minecraft:black_concrete",
@@ -286,7 +303,8 @@ def build_crown(grid, seed):
     for i, ang in enumerate(minor_angles):
         bx = CX + int(round((COLLAR_R - 3) * math.cos(ang)))
         by = CY + int(round((COLLAR_R - 3) * math.sin(ang)))
-        build_spike(grid, bx, by, COLLAR_Z1 - 2, ang, 58, 34, 13.0, 2.6, WALL, seed=seed + 30 + i)
+        build_spike(grid, bx, by, COLLAR_Z1 - 2, ang, 58, 34, 13.0 * DIAM_SCALE, 2.6 * DIAM_SCALE,
+                    WALL, seed=seed + 30 + i)
 
     # major pillars: each one is aimed at a point held GAP_TO_ORB blocks off
     # the orb's own surface (rather than an independent tilt path), so the
@@ -300,7 +318,7 @@ def build_crown(grid, seed):
         tx = CX + target_r * math.sin(beta) * math.cos(ang)
         ty = CY + target_r * math.sin(beta) * math.sin(ang)
         tz = EYE_CENTER_Z + target_r * math.cos(beta)
-        build_spike_to(grid, bx, by, COLLAR_Z1 - 2, tx, ty, tz, 3.4, WALL, seed=seed + 60 + i)
+        build_spike_to(grid, bx, by, COLLAR_Z1 - 2, tx, ty, tz, 3.4 * DIAM_SCALE, WALL, seed=seed + 60 + i)
 
 
 # ---------------------------------------------------------------------------

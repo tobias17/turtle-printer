@@ -101,6 +101,7 @@ LEGACY_MAP = {
     "minecraft:diorite": ("stone", 3),
     "minecraft:granite": ("stone", 1),
     "minecraft:glass": ("glass", 0),
+    "minecraft:purple_stained_glass": ("stained_glass", 10),  # standard dye-meta order
     "minecraft:bone_block": ("bone_block", 0),
     "minecraft:brown_mushroom": ("brown_mushroom", 0),
     "minecraft:red_mushroom": ("red_mushroom", 0),

@@ -115,6 +115,11 @@ HEIGHT_NOISE_BASE_FREQ = 0.01  # spatial frequency of the height field - low, fo
 HEIGHT_NOISE_SAMPLE_RADIUS = 500  # how far out (in blocks) to search for the field's minimum/maximum
 HEIGHT_NOISE_SAMPLE_STEP = 5
 
+HOST_Y_DROP = 10  # the host platform (and the spire standing on it) sit this many blocks
+                   # below the ring's own height field's own zero point - lower than the
+                   # noise map's computed minimum would otherwise put the center, so the
+                   # tower reads as rising out of a shallow basin relative to the ring
+
 def _hex_to_rgb(hex_color):
     h = hex_color.lstrip("#")
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
@@ -227,7 +232,7 @@ def build_scene(seed=1):
     host_max_depth = max(6, host_diameter // 2)
     blocks.update(HOST_MODULE.generate_island(
         seed=seed, diameter=host_diameter, max_depth=host_max_depth,
-        decorate_top=False, decorate_underside=True, offset=(0, 0, 0),
+        decorate_top=False, decorate_underside=True, offset=(0, -HOST_Y_DROP, 0),
     ))
     placed.append((0.0, 0.0, host_diameter / 2.0, HOST_TOP_COLOR))
     print(f"host spire-base island (spire): d={host_diameter}")
@@ -239,10 +244,12 @@ def build_scene(seed=1):
     spire_height = int(np.nonzero(spire_structure.data)[1].max())
     # spire's own (X, Z) center is (CX, CY); its Y=0 is its flat base, which
     # needs to land right on the buildable surface just above the host
-    # island's flat top (topY=0, so the surface to build on is y=1).
-    spire_offset = (-spire.CX, 1, -spire.CY)
+    # island's flat top (topY=0, so the surface to build on is y=1) - minus
+    # HOST_Y_DROP, since the host itself was placed that far down above.
+    ring_base_y = 1  # the ring's own height field's own zero point (unaffected by HOST_Y_DROP)
+    spire_offset = (-spire.CX, ring_base_y - HOST_Y_DROP, -spire.CY)
     blocks.update(structure_to_blocks(spire_structure, offset=spire_offset))
-    height_lo = spire_offset[1]
+    height_lo = ring_base_y
     height_span = spire_height * HEIGHT_FRAC_MAX
     height_fraction = _height_fraction_field(seed + 9973)
 

@@ -18,6 +18,8 @@ Usage:
     python mushroom.py --diameter 40 --seed 7
 """
 
+import random
+
 import common
 
 # ---------------------------------------------------------------------------
@@ -26,21 +28,38 @@ import common
 
 STEM_BLOCK = "minecraft:mushroom_stem"
 
-# Mostly red concrete with scattered white-concrete spots, mimicking the
-# actual red mushroom block's red-with-white-dots texture - a deliberate,
-# explicit exception to this project's usual "one solid top color" rule for
-# these islands, since the whole point here is to read as that specific
-# block's own pattern rather than a flat color.
+# Mostly red concrete with white-concrete spots on a regular (x, z) lattice
+# (see CAP_SPOT_SPACING), mimicking the actual red mushroom block's own
+# dot texture - evenly spaced, not scattered - with a little randomness
+# from CAP_SPOT_CHANCE (not every lattice point actually shows a dot) so it
+# doesn't read as a rigid, mechanical grid. A deliberate, explicit exception
+# to this project's usual "one solid top color" rule for these islands,
+# since the whole point here is to read as that specific block's own
+# pattern rather than a flat color.
 CAP_BLOCK = "minecraft:red_concrete"
 CAP_SPOT_BLOCK = "minecraft:white_concrete"
-CAP_SPOT_CHANCE = 0.12
+CAP_SPOT_SPACING = 3   # blocks between candidate spot columns, each axis
+CAP_SPOT_CHANCE = 0.65  # chance a given lattice column actually shows a spot
 
 
-def pick_cap_crust(rng):
-    """Top-crust block: red concrete, with a scatter of white-concrete spots
-    (see CAP_SPOT_CHANCE) standing in for the real red mushroom block's
-    texture."""
-    return CAP_SPOT_BLOCK if rng.random() < CAP_SPOT_CHANCE else CAP_BLOCK
+def _make_cap_picker(rng):
+    """Returns pick_cap_crust(x, z): red concrete, with white-concrete
+    spots on the regular CAP_SPOT_SPACING lattice. Each eligible (x, z)
+    column rolls ONCE whether it actually shows a spot (cached here, in
+    `decided`) rather than re-rolling per voxel, so a spot column reads as
+    one clean vertical streak of white top to bottom through the crust,
+    not per-voxel flicker."""
+    decided = {}
+
+    def pick_cap_crust(x, z):
+        if x % CAP_SPOT_SPACING != 0 or z % CAP_SPOT_SPACING != 0:
+            return CAP_BLOCK
+        key = (x, z)
+        if key not in decided:
+            decided[key] = rng.random() < CAP_SPOT_CHANCE
+        return CAP_SPOT_BLOCK if decided[key] else CAP_BLOCK
+
+    return pick_cap_crust
 
 
 def _cap_and_stem(blocks, col_bottom, columns, rng, max_depth):
@@ -102,11 +121,13 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     """
     size, half, radius = common.grid_dims(diameter)
 
+    pick_cap_crust = _make_cap_picker(random.Random(seed + 31))
+
     def top_block(rng, x, z, xi, zi):
-        return pick_cap_crust(rng)
+        return pick_cap_crust(x, z)
 
     def body_block(rng, x, z, xi, zi, y_offset, thickness, total_depth):
-        return pick_cap_crust(rng)
+        return pick_cap_crust(x, z)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,

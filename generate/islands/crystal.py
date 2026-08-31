@@ -13,7 +13,8 @@ straight-sided shaft topped with a hexagonal pyramid point, not a cone that
 tapers along its whole length - packed edge to edge over a jittered hex
 lattice, tallest near the center and shorter/leaning outward toward the
 rim. Deliberately a consolidated two-block palette: solid purpur for the
-whole rock platform, solid glass for every crystal point, nothing else.
+whole rock platform, solid purple stained glass for every crystal point,
+nothing else.
 See _crystal_mass/_carve_crystal_point below for the shape itself; only the
 island's overall taper/silhouette comes from common.carve_columns.
 
@@ -31,11 +32,11 @@ import common
 # ---------------------------------------------------------------------------
 
 # Consolidated two-block palette: solid purpur for the whole rock platform
-# (top crust and body alike, no gradient/vein/fleck), solid glass for every
-# crystal point in the underside mass (see _carve_crystal_point) - nothing
-# else is used anywhere in this theme.
+# (top crust and body alike, no gradient/vein/fleck), solid purple stained
+# glass for every crystal point in the underside mass (see
+# _carve_crystal_point) - nothing else is used anywhere in this theme.
 BLOCK = "minecraft:purpur_block"
-CRYSTAL_BLOCK = "minecraft:glass"
+CRYSTAL_BLOCK = "minecraft:purple_stained_glass"
 
 
 def pick_crust(rng):
@@ -101,7 +102,7 @@ def _hex_radius(dx, dz):
 
 
 def _carve_crystal_point(blocks, rng, cx, cz, top_y, height, radius, lean_x, lean_z):
-    """Carves one hexagonal glass crystal point growing down from
+    """Carves one hexagonal purple-glass crystal point growing down from
     (cx, cz, top_y): a straight hexagonal shaft at constant radius for
     (1 - TIP_FRAC) of its height, then narrowing in a hexagonal pyramid to
     a point over the last TIP_FRAC - the actual shape of a quartz/amethyst
@@ -282,7 +283,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
                        crystal patches are shaped by _crystal_underside
                        instead of common.generate_drips (kept only for
                        CLI/run_cli signature compatibility).
-    decorate_top     - if True, scatters small glass crystal florets and
+    decorate_top     - if True, scatters small purple-glass crystal florets and
                        outcrops on top.
     decorate_underside - if True (default), grows the dense hexagonal
                        crystal patches on the underside; if False, the
@@ -309,7 +310,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         _flatten_floor(blocks, col_bottom, columns, rng)
 
     if decorate_top:
-        # sparse individual glass crystal florets on the top surface
+        # sparse individual purple-glass crystal florets on the top surface
         for (x, z, topY, depth, r, localR) in columns:
             if r / localR < 0.9 and rng.random() < 0.1:
                 blocks.setdefault((x, topY + 1, z), CRYSTAL_BLOCK)
@@ -345,7 +346,7 @@ def generate_scene(seed=0):
 
 BLOCK_COLORS = {
     "minecraft:purpur_block": "#a884b0",
-    "minecraft:glass": "#cfe0e8",
+    "minecraft:purple_stained_glass": "#8f5fd1",
 }
 
 
