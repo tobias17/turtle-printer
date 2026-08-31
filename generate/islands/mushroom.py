@@ -2,11 +2,12 @@
 Fungal Floating Island Generator for Minecraft
 ===================================================
 
-A mushroom-cap island variant: solid red mushroom block all the way
+A mushroom-cap island variant: red concrete speckled with scattered white
+spots (mimicking the actual red mushroom block's texture) all the way
 through, top to underside, shaped into a flat mushroom cap with a single
-thick white stem plunging down from the center - just those two blocks,
-no gradient, no gill texture, no hanging drips or rim fringe. Giant
-mushrooms can grow on top instead of trees.
+thick white stem plunging down from the center - no gradient, no gill
+texture, no hanging drips or rim fringe. Giant mushrooms can grow on top
+instead of trees.
 
 Shares its silhouette/taper machinery with the other island themes in
 generate/islands/ (see common.py) - this file only supplies the fungal-
@@ -25,10 +26,21 @@ import common
 
 STEM_BLOCK = "minecraft:mushroom_stem"
 
+# Mostly red concrete with scattered white-concrete spots, mimicking the
+# actual red mushroom block's red-with-white-dots texture - a deliberate,
+# explicit exception to this project's usual "one solid top color" rule for
+# these islands, since the whole point here is to read as that specific
+# block's own pattern rather than a flat color.
+CAP_BLOCK = "minecraft:red_concrete"
+CAP_SPOT_BLOCK = "minecraft:white_concrete"
+CAP_SPOT_CHANCE = 0.12
+
 
 def pick_cap_crust(rng):
-    """Top-crust block: solid red mushroom block, no fleck - a flat platform."""
-    return "minecraft:red_mushroom_block"
+    """Top-crust block: red concrete, with a scatter of white-concrete spots
+    (see CAP_SPOT_CHANCE) standing in for the real red mushroom block's
+    texture."""
+    return CAP_SPOT_BLOCK if rng.random() < CAP_SPOT_CHANCE else CAP_BLOCK
 
 
 def _cap_and_stem(blocks, col_bottom, columns, rng, max_depth):
@@ -150,6 +162,8 @@ BLOCK_COLORS = {
     "minecraft:brown_mushroom": "#8a6a48",
     "minecraft:red_mushroom_block": "#a83232",
     "minecraft:brown_mushroom_block": "#9c7a52",
+    "minecraft:red_concrete": "#8f2213",
+    "minecraft:white_concrete": "#e2e5e6",
 }
 
 

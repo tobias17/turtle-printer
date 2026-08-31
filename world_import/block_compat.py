@@ -95,6 +95,12 @@ LEGACY_MAP = {
 
     # ---- already-correct bare legacy names (single/default variant) ----
     "minecraft:black_concrete": ("concrete", 15),  # concrete is real in 1.12.2 (added 1.12); standard dye-meta order
+    "minecraft:red_concrete": ("concrete", 14),
+    "minecraft:white_concrete": ("concrete", 0),
+    "minecraft:andesite": ("stone", 5),
+    "minecraft:diorite": ("stone", 3),
+    "minecraft:granite": ("stone", 1),
+    "minecraft:glass": ("glass", 0),
     "minecraft:bone_block": ("bone_block", 0),
     "minecraft:brown_mushroom": ("brown_mushroom", 0),
     "minecraft:red_mushroom": ("red_mushroom", 0),
@@ -172,6 +178,18 @@ LEGACY_MAP = {
     # forest, 1 plains, 2 mountain, 3 fungal, 4 swamp, ... - "Metamorphic
     # Swamp Stone" (variant=swamp) is meta 4.
     "botania:biomestonea_swamp": ("botania", "biomestonea", 4),
+    # same BlockBiomeStoneA, meta 2 = "mountain" in BiomeStoneVariant's
+    # ordinal order (see above) - "Metamorphic Mountain Stone".
+    "botania:biomestonea_mountain": ("botania", "biomestonea", 2),
+    # Thaumic Augmentation's Void Stone: BlockTAStone, registry name "stone"
+    # (a shared multi-meta block, like ProjectRed Exploration's own "stone" -
+    # its per-variant blockstate JSON filenames, e.g. stone_void.json, are
+    # just per-meta model lookups, NOT separate registry names). Confirmed
+    # via decompiling BlockTAStone.class + ITAStoneType$StoneType's static
+    # init (StoneType.STONE_VOID constructed with meta 0) and, definitively,
+    # against this save's own level.dat FML block registry - it lists
+    # "thaumicaugmentation:stone" (no separate "stone_void" entry exists).
+    "thaumicaugmentation:stone_void": ("thaumicaugmentation", "stone", 0),
 }
 
 

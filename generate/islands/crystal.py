@@ -4,16 +4,16 @@ Crystal Geode Floating Island Generator for Minecraft
 
 A crystal-cave island variant, built to match a real geode photo rather
 than reusing this project's usual dripstone-shaped underside: the whole
-underside is ONE dense amethyst crystal MASS spanning nearly the entire
-island - the reference geode photo itself, scaled up to the island's
-diameter and flipped upside down (the thin dark rock matrix on top, the
-crystal fan hanging point-down below it), not a normal island with a few
-small crystal patches bolted on. The mass is many individual hexagonal
-crystal points - a straight-sided shaft topped with a hexagonal pyramid
-point, not a cone that tapers along its whole length - packed edge to edge
-over a jittered hex lattice, tallest near the center and shorter/leaning
-outward toward the rim, with a pale "rind" ring and druse fuzz where the
-crystals meet the surrounding rock, the way an actual amethyst geode looks.
+underside is ONE dense crystal MASS spanning nearly the entire island - the
+reference geode photo itself, scaled up to the island's diameter and
+flipped upside down (the rock matrix on top, the crystal fan hanging
+point-down below it), not a normal island with a few small crystal patches
+bolted on. The mass is many individual hexagonal crystal points - a
+straight-sided shaft topped with a hexagonal pyramid point, not a cone that
+tapers along its whole length - packed edge to edge over a jittered hex
+lattice, tallest near the center and shorter/leaning outward toward the
+rim. Deliberately a consolidated two-block palette: solid purpur for the
+whole rock platform, solid glass for every crystal point, nothing else.
 See _crystal_mass/_carve_crystal_point below for the shape itself; only the
 island's overall taper/silhouette comes from common.carve_columns.
 
@@ -30,35 +30,18 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Neutral geode-cave rock, tinted purple at the surface and settling into
-# plain dark stone with depth - the crust itself should already read as
-# "amethyst-infused stone", not plain grey rock with crystals bolted on
-# after the fact. Kept to solid bands (no fleck/dither) so the bulk rock
-# reads as clean strata; the clustered crystal growths below are what
-# carries the sparkle.
-GRADIENT = [
-    "minecraft:purpur_block",
-    "minecraft:tuff",
-    "minecraft:deepslate",
-]
-
-
-def pick_gradient(rng, t, jitter=0.0):
-    """Picks a block for depth-fraction t in [0, 1] (0 = right at the
-    purple crust, 1 = deepest rock). `jitter` (driven only by smooth
-    per-column noise) nudges the whole column toward a neighboring shade so
-    the band edge is wavy instead of a razor-straight ring, without
-    per-voxel dithering."""
-    n = len(GRADIENT)
-    pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    idx = int(round(min(max(pos, 0.0), n - 1)))
-    return GRADIENT[idx]
+# Consolidated two-block palette: solid purpur for the whole rock platform
+# (top crust and body alike, no gradient/vein/fleck), solid glass for every
+# crystal point in the underside mass (see _carve_crystal_point) - nothing
+# else is used anywhere in this theme.
+BLOCK = "minecraft:purpur_block"
+CRYSTAL_BLOCK = "minecraft:glass"
 
 
 def pick_crust(rng):
-    """Top-crust block: solid purple geode stone, no fleck - the crust is a
-    flat platform."""
-    return "minecraft:purpur_block"
+    """Top-crust/body block: solid purpur, no fleck - the whole rock mass is
+    this one block."""
+    return BLOCK
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +86,6 @@ HEIGHT_TO_WIDTH_RANGE = (3.5, 6.0)
 POINT_SPACING_FACTOR = 2.6
 TIP_FRAC = 0.4                      # fraction of a point's height spent narrowing to its tip
 LEAN_STRENGTH = 0.6                 # max sideways drift per block of height, at the mass's outer edge
-RIND_BLOCK = "minecraft:calcite"    # pale stone ring around the mass, like a geode's outer shell
 
 
 def _hex_radius(dx, dz):
@@ -119,13 +101,14 @@ def _hex_radius(dx, dz):
 
 
 def _carve_crystal_point(blocks, rng, cx, cz, top_y, height, radius, lean_x, lean_z):
-    """Carves one hexagonal amethyst crystal point growing down from
+    """Carves one hexagonal glass crystal point growing down from
     (cx, cz, top_y): a straight hexagonal shaft at constant radius for
     (1 - TIP_FRAC) of its height, then narrowing in a hexagonal pyramid to
     a point over the last TIP_FRAC - the actual shape of a quartz/amethyst
     crystal, not a cone that tapers along its entire length. Drifts
     sideways by (lean_x, lean_z) per block of descent so points near a
-    patch's edge can radiate outward instead of hanging dead-parallel."""
+    patch's edge can radiate outward instead of hanging dead-parallel.
+    Solid CRYSTAL_BLOCK throughout - no shaft/tip material distinction."""
     tip_len = max(2, round(height * TIP_FRAC))
     shaft_len = max(1, height - tip_len)
     x, z = cx, cz
@@ -136,17 +119,12 @@ def _carve_crystal_point(blocks, rng, cx, cz, top_y, height, radius, lean_x, lea
         else:
             t = (dl - shaft_len) / max(1, height - 1 - shaft_len)
             r = radius * (1 - t)
-        in_tip = dl >= shaft_len
         ir = max(0, math.ceil(r))
         ix, iz = round(x), round(z)
         for dx in range(-ir, ir + 1):
             for dz in range(-ir, ir + 1):
                 if _hex_radius(dx, dz) <= r + 1e-6:
-                    if in_tip or rng.random() < 0.08:
-                        block = "minecraft:amethyst_cluster"
-                    else:
-                        block = "minecraft:amethyst_block"
-                    blocks[(ix + dx, y, iz + dz)] = block
+                    blocks[(ix + dx, y, iz + dz)] = CRYSTAL_BLOCK
         x += lean_x
         z += lean_z
 
@@ -170,13 +148,11 @@ def _outline_fn(rng, base_radius, amp, n_harmonics=3):
 
 def _crystal_mass(blocks, rng, size, half, diameter, col_bottom):
     """Grows ONE dense crystal mass spanning nearly the whole underside:
-    many individual hexagonal points (_carve_crystal_point) packed edge to
-    edge over a jittered hex lattice within an irregular (_outline_fn)
-    footprint, tallest near the island's center and shorter/leaning outward
-    toward the rim - this is the reference geode photo's entire crystal fan,
-    not a small bolted-on patch - plus a pale rind ring and druse speckle
-    where it meets the surrounding rock, matching the reference photo's
-    geode shell/base.
+    many individual hexagonal points (_carve_crystal_point), each solid
+    CRYSTAL_BLOCK, packed edge to edge over a jittered hex lattice within an
+    irregular (_outline_fn) footprint, tallest near the island's center and
+    shorter/leaning outward toward the rim - this is the reference geode
+    photo's entire crystal fan, not a small bolted-on patch.
 
     Each point attaches at its own column's actual floor height (read
     straight from col_bottom, already flattened by _flatten_floor), so the
@@ -257,35 +233,6 @@ def _crystal_mass(blocks, rng, size, half, diameter, col_bottom):
             _carve_crystal_point(blocks, rng, px, pz, floor_y, height, radius, lean_x, lean_z)
             n_placed += 1
 
-    # pale rind, like a geode's outer shell, marking where the mass meets
-    # the plain rock floor around it - a speckled druse transition rather
-    # than a solid ring, so it reads as texture and not a painted stripe
-    for a in range(192):
-        angle = a / 192 * 2 * math.pi
-        local_footprint = outline(angle)
-        for frac in (0.88, 0.98, 1.08, 1.18, 1.28):
-            bx, bz = round(local_footprint * frac * math.cos(angle)), round(local_footprint * frac * math.sin(angle))
-            floor_y = floor_y_at(bx, bz)
-            if floor_y is None or rng.random() >= 0.45:
-                continue
-            block = common.weighted_choice(rng, [
-                (RIND_BLOCK, 0.5),
-                ("minecraft:amethyst_cluster", 0.3),
-                ("minecraft:budding_amethyst", 0.2),
-            ])
-            blocks[(bx, floor_y, bz)] = block
-
-    # druse: fine crystal fuzz filling the floor between the big points
-    for _ in range(n_placed * 2):
-        angle = rng.uniform(0, 2 * math.pi)
-        rad = outline(angle) * math.sqrt(rng.random())
-        bx, bz = round(rad * math.cos(angle)), round(rad * math.sin(angle))
-        floor_y = floor_y_at(bx, bz)
-        if floor_y is None:
-            continue
-        block = "minecraft:amethyst_cluster" if rng.random() < 0.5 else "minecraft:budding_amethyst"
-        blocks.setdefault((bx, floor_y, bz), block)
-
 
 def _flatten_floor(blocks, col_bottom, columns, rng):
     """Flattens the whole underside to one shallow, flat rock floor - the
@@ -328,47 +275,26 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     flat_top        - if True (default), the top surface is a single flat
                        Y level. Outline is still irregular.
     top_thickness_range - (min, max) number of purple-crust layers, before
-                       the tuff/deepslate gradient starts.
+                       the body - kept only for CLI/run_cli signature
+                       compatibility; the whole rock mass is solid BLOCK
+                       regardless of depth.
     num_drips / drip_density - unused by this theme; the underside's
                        crystal patches are shaped by _crystal_underside
                        instead of common.generate_drips (kept only for
                        CLI/run_cli signature compatibility).
-    decorate_top     - if True, scatters amethyst clusters and small
-                       crystal-studded outcrops on top.
+    decorate_top     - if True, scatters small glass crystal florets and
+                       outcrops on top.
     decorate_underside - if True (default), grows the dense hexagonal
                        crystal patches on the underside; if False, the
                        underside is just the plain flattened rock floor.
     """
     size, half, radius = common.grid_dims(diameter)
 
-    def grid_for(cell_blocks, minimum=6):
-        return max(minimum, size // cell_blocks)
-
-    gradient_noise = common.value_noise_2d(size, grid_for(4, 8), seed + 9) * 1.8
-    speckle_noise = common.value_noise_2d(size, grid_for(2, 12), seed + 13) * 1.1
-
-    # a coarse per-column phase field so each column's veins snake through
-    # depth on their own wavy schedule rather than forming perfect rings -
-    # combined with a sine of y_offset, this traces actual vein bands of
-    # crystal running through the bulk rock instead of independent random
-    # single-voxel flecks, which is what made the geode read as "painted".
-    vein_phase_noise = common.value_noise_2d(size, grid_for(3, 7), seed + 17)
-    VEIN_THRESHOLD = 0.8
-
     def top_block(rng, x, z, xi, zi):
         return pick_crust(rng)
 
     def body_block(rng, x, z, xi, zi, y_offset, thickness, total_depth):
-        if y_offset < thickness:
-            return pick_crust(rng)
-        g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
-        t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        vein_phase = math.sin(y_offset * 0.8 + vein_phase_noise[xi, zi] * 6.0)
-        if vein_phase > VEIN_THRESHOLD:
-            # solid amethyst so the vein reads as one clean seam, not a
-            # speckled streak
-            return "minecraft:amethyst_block"
-        return pick_gradient(rng, t_grad, jitter=g_jitter)
+        return pick_crust(rng)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -383,25 +309,25 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         _flatten_floor(blocks, col_bottom, columns, rng)
 
     if decorate_top:
-        # sparse individual crystal florets on the top surface
+        # sparse individual glass crystal florets on the top surface
         for (x, z, topY, depth, r, localR) in columns:
             if r / localR < 0.9 and rng.random() < 0.1:
-                blocks.setdefault((x, topY + 1, z), "minecraft:amethyst_cluster")
+                blocks.setdefault((x, topY + 1, z), CRYSTAL_BLOCK)
 
-        # a couple of small budding-amethyst outcrops, bristling with clusters
+        # a couple of small glass outcrops
         outcrop_spots = [c for c in columns if c[4] / c[5] < 0.55]
         rng.shuffle(outcrop_spots)
         for (x, z, topY, depth, r, localR) in outcrop_spots[: rng.randint(0, 3)]:
             mound_h = rng.randint(1, 2)
             for dy in range(mound_h):
-                blocks[(x, topY + 1 + dy, z)] = "minecraft:budding_amethyst"
+                blocks[(x, topY + 1 + dy, z)] = CRYSTAL_BLOCK
             top_y = topY + 1 + mound_h
             for dx in range(-1, 2):
                 for dz in range(-1, 2):
                     if dx == 0 and dz == 0:
                         continue
                     if rng.random() < 0.6:
-                        blocks.setdefault((x + dx, top_y, z + dz), "minecraft:amethyst_cluster")
+                        blocks.setdefault((x + dx, top_y, z + dz), CRYSTAL_BLOCK)
 
     # apply world offset
     ox, oy, oz = offset
@@ -409,8 +335,8 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 
 
 def generate_scene(seed=0):
-    """One big crystal island plus satellites and floating rock/crystal debris."""
-    return common.basic_scene(seed, generate_island, debris_block="minecraft:amethyst_block")
+    """One big crystal island plus satellites and floating glass/purpur debris."""
+    return common.basic_scene(seed, generate_island, debris_block=CRYSTAL_BLOCK)
 
 
 # ---------------------------------------------------------------------------
@@ -419,12 +345,7 @@ def generate_scene(seed=0):
 
 BLOCK_COLORS = {
     "minecraft:purpur_block": "#a884b0",
-    "minecraft:tuff": "#6d6a63",
-    "minecraft:deepslate": "#393a3d",
-    "minecraft:amethyst_block": "#8f5fd1",
-    "minecraft:budding_amethyst": "#7c4fc0",
-    "minecraft:amethyst_cluster": "#a875e0",
-    "minecraft:calcite": "#e8e4d0",
+    "minecraft:glass": "#cfe0e8",
 }
 
 
@@ -443,7 +364,7 @@ def main():
         scene_title_fn=lambda seed: f"crystal multi-island demo scene (seed={seed})",
         num_drips_help="unused by this theme - underside crystal clusters are shaped by "
                         "clumped noise instead, kept only for CLI compatibility",
-        decorate_top_help="scatter amethyst clusters and outcrops on top (off by default)",
+        decorate_top_help="scatter small glass crystal florets and outcrops on top (off by default)",
     )
 
 

@@ -3,16 +3,16 @@ Spire-Base Floating Island Generator for Minecraft
 =====================================================
 
 A deliberately plain, generic island: no veins, no vines, no drips, no
-top scatter, no gradient - solid black concrete throughout, using the
-same shared taper shape every other theme uses. Exists purely as the base
-spire.py's tower stands on (see generate/scene.py) - the platform
-shouldn't compete visually with the tower sitting on it, so this is the
-plainest palette/decoration of any theme in generate/islands/, not a
-themed island of its own.
+top scatter, no gradient - solid Thaumic Augmentation Void Stone
+throughout, using the same shared taper shape every other theme uses.
+Exists purely as the base spire.py's tower stands on (see
+generate/scene.py) - the platform shouldn't compete visually with the
+tower sitting on it, so this is the plainest palette/decoration of any
+theme in generate/islands/, not a themed island of its own.
 
 Shares its silhouette/taper machinery with the other island themes in
 generate/islands/ (see common.py) - this file only supplies a single flat
-black-concrete block and skips every theme's usual optional decoration
+void-stone block and skips every theme's usual optional decoration
 (drips, rim vines, top scatter, depth gradient) entirely.
 
 Usage:
@@ -28,7 +28,7 @@ import common
 
 # One block, top to bottom - no gradient, no fleck: deliberately the least
 # visually busy palette of any theme, so it reads as a neutral plinth.
-BLOCK = "minecraft:black_concrete"
+BLOCK = "thaumicaugmentation:stone_void"
 
 # Callers (scene.py, rollup.py) size max_depth the same way for every theme
 # - roughly diameter / 2 - but a plain flat plinth reads better a bit
@@ -84,7 +84,7 @@ def generate_scene(seed=0):
 # ---------------------------------------------------------------------------
 
 BLOCK_COLORS = {
-    "minecraft:black_concrete": "#0f0f10",
+    "thaumicaugmentation:stone_void": "#151020",
 }
 
 

@@ -31,6 +31,8 @@ Usage:
     python volcano.py --diameter 40 --seed 7
 """
 
+import math
+
 import common
 
 # ---------------------------------------------------------------------------
@@ -45,11 +47,53 @@ import common
 TOP_CRUST_BLOCK = "projectred_exploration:stone_basalt"
 BODY_BLOCK = "minecraft:blackstone"
 
-# Sparse magma accents through the body - single isolated voxels, never a
-# vein or cluster (that's the "ore" look this theme deliberately avoids
-# elsewhere). Low enough odds that most columns have none at all.
+# Magma accents through the body - mostly single isolated voxels (never a
+# wide vein or blob, that's the "ore" look this theme deliberately avoids
+# elsewhere), plus occasional short streaks (_magma_streaks below) so a
+# handful of columns get a thin, wandering seam of magma instead of just a
+# scattered dot. Still low enough odds that most of the body has none.
 ACCENT_BLOCK = "minecraft:magma_block"
-ACCENT_CHANCE = 0.015
+ACCENT_CHANCE = 0.03
+
+# A handful of columns instead grow a short streak of consecutive magma
+# blocks - a thin lava seam reading as one continuous line, never widening
+# into a cluster - rather than just the single-voxel sprinkle above.
+STREAK_CHANCE = 0.05
+STREAK_LEN_RANGE = (3, 6)
+
+
+def _magma_streaks(blocks, columns, col_bottom, rng, top_thickness_range):
+    """Occasional short streaks of magma block through the body - a few
+    consecutive blocks along a slightly wandering line, distinct from the
+    single-isolated-voxel sprinkle in body_block. Each streak stays a
+    single line (never widens), so it reads as a thin lava seam rather than
+    an ore cluster. Only ever recolors existing BODY_BLOCK voxels (never
+    crust or air), so it can't punch through the crust or hang in empty
+    space."""
+    min_thick = top_thickness_range[0]
+    eligible = [c for c in columns if c[3] > min_thick + STREAK_LEN_RANGE[0]]
+    n_streaks = max(1, round(len(eligible) * STREAK_CHANCE))
+    rng.shuffle(eligible)
+    for (x, z, topY, depth, r, localR) in eligible[:n_streaks]:
+        bottomY, _, _, _ = col_bottom[(x, z)]
+        body_top = topY - min_thick       # just below the guaranteed-crust band
+        body_bottom = bottomY + 1
+        if body_top <= body_bottom:
+            continue
+        length = min(rng.randint(*STREAK_LEN_RANGE), body_top - body_bottom + 1)
+        start_y = rng.randint(body_bottom, body_top)
+        fx, fz = float(x), float(z)
+        angle = rng.uniform(0, 2 * math.pi)
+        for i in range(length):
+            y = start_y - i
+            if y < body_bottom:
+                break
+            bx, bz = round(fx), round(fz)
+            if blocks.get((bx, y, bz)) == BODY_BLOCK:
+                blocks[(bx, y, bz)] = ACCENT_BLOCK
+            angle += rng.uniform(-0.3, 0.3)
+            fx += math.cos(angle) * rng.uniform(0.0, 0.6)
+            fz += math.sin(angle) * rng.uniform(0.0, 0.6)
 
 
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
@@ -89,6 +133,8 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # dome shape.
         taper_strength=0.9, taper_exponent=0.5,
     )
+
+    _magma_streaks(blocks, columns, col_bottom, rng, top_thickness_range)
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):

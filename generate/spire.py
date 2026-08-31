@@ -2,7 +2,7 @@
 Sauron's Spire Generator (~150 blocks tall)
 =============================================
 Procedurally builds a voxel model of a colossal dark-lord tower: a tall,
-mostly-circular basalt-brick shaft with a single continuous taper (no
+mostly-circular black-concrete shaft with a single continuous taper (no
 lips or overhanging platforms) wrapped by a raised ridge that spirals up
 the whole height like a walkable staircase, hollow all the way up (one
 open shaft, no floors or ladder inside) so there's a huge amount of
@@ -94,12 +94,12 @@ GAP_TO_ORB = 8.0                # air gap kept between the major claw tips and t
 EYE_CENTER_Z = COLLAR_Z1 + 19
 
 BLOCK_NAMES = {
-    WALL: "projectred_exploration:basalt_brick",
+    WALL: "minecraft:black_concrete",
     ORB: "minecraft:orange_wool",
 }
 
 BLOCK_COLORS = {
-    "projectred_exploration:basalt_brick": "#4a4640",
+    "minecraft:black_concrete": "#0f0f10",
     "minecraft:orange_wool": "#d2691e",
 }
 

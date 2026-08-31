@@ -3,8 +3,8 @@ Floating Island Generator for Minecraft (grass / stone / nature theme)
 =========================================================================
 
 Procedurally generates floating rock islands (irregular grassy top,
-tapering rocky underside, hanging "root" stalactites, leafy decoration)
-in the style of concept-art floating islands.
+tapering rocky underside patched with andesite/diorite/granite, hanging
+"root" stalactites) in the style of concept-art floating islands.
 
 This is the original nature-themed island. It now lives alongside other
 biome variants in generate/islands/ (see volcano.py, snow.py, desert.py,
@@ -66,24 +66,39 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
                        size instead of clustering near one shared maximum.
     decorate_top     - if True, scatters small trees on top. Off by
                        default so the surface stays clear to build on.
-    decorate_underside - hanging root drips + leafy accents on the rock
-                       underside. On by default for the floating-island look;
-                       doesn't affect the top surface at all.
+    decorate_underside - hanging root drips on the rock underside. On by
+                       default for the floating-island look; doesn't affect
+                       the top surface at all.
     """
+    size, half, radius = common.grid_dims(diameter)
+
+    def grid_for(cell_blocks, minimum=6):
+        return max(minimum, size // cell_blocks)
+
+    # Smooth per-column noise (not per-voxel dither, matching this project's
+    # usual "no fleck" convention) picking out patches of andesite/diorite/
+    # granite within the plain stone body - reads as ordinary stone-variety
+    # pulled straight from the ground, not ore veins.
+    stone_variant_noise = common.value_noise_2d(size, grid_for(5, 8), seed + 21)
+
     def top_block(rng, x, z, xi, zi):
         return "minecraft:grass_block"
 
     def body_block(rng, x, z, xi, zi, y_offset, thickness, total_depth):
-        return "minecraft:dirt" if y_offset < thickness else "minecraft:stone"
-
-    def bottom_face(rng, blocks, x, z, bottomY, r, localR):
-        # occasional leaf cap on the very bottom face near the edge
-        if r / localR > 0.65 and rng.random() < 0.35:
-            blocks[(x, bottomY, z)] = "minecraft:oak_leaves"
+        if y_offset < thickness:
+            return "minecraft:dirt"
+        n = stone_variant_noise[xi, zi]
+        if n > 0.5:
+            return "minecraft:andesite"
+        if n < -0.5:
+            return "minecraft:diorite"
+        if abs(n) < 0.12:
+            return "minecraft:granite"
+        return "minecraft:stone"
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top,
-        top_block, body_block, bottom_face_fn=bottom_face,
+        top_block, body_block,
         # a touch gentler/rounder than volcano.py's sharper, more concave
         # taper (both pre-existing carve_columns parameters, no shared code
         # touched) - reads as a softer earthy mound instead of the same
@@ -93,22 +108,10 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):
-            return "minecraft:oak_leaves" if is_tip else "minecraft:stone"
-
-        def after_drip(rng, blocks, x, tip_y, z):
-            if rng.random() < 0.6:
-                blocks[(x, tip_y, z)] = "minecraft:oak_leaves"
+            return "minecraft:stone"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
-                               num_drips, drip_density, drip_block, after_drip_fn=after_drip)
-
-        # leafy accents draped down from the underside near the outer rim -
-        # a plain solid block, not vine: nothing in this project's turtle-
-        # build pipeline resolves an attachment face the way vine needs
-        # (see common.decorate_rim_underside's own docstring)
-        common.decorate_rim_underside(rng, blocks, columns, col_bottom,
-                                       rim_block_fn=lambda rng: "minecraft:oak_leaves",
-                                       r_frac_threshold=0.55, chance=0.18, length_range=(2, 6))
+                               num_drips, drip_density, drip_block)
 
     if decorate_top:
         # a couple of small trees
@@ -144,6 +147,9 @@ BLOCK_COLORS = {
     "minecraft:grass_block": "#5b8a3a",
     "minecraft:dirt": "#6b4a2b",
     "minecraft:stone": "#8a8a8a",
+    "minecraft:andesite": "#9a9a93",
+    "minecraft:diorite": "#c2c2c2",
+    "minecraft:granite": "#9b6a56",
     "minecraft:oak_log": "#5a3d1f",
     "minecraft:oak_leaves": "#3f7a2f",
 }

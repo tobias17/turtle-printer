@@ -115,15 +115,20 @@ def _honeycomb_cells(blocks, col_bottom, columns, max_depth, crust_depth):
     instead of a sparse symmetric subset.
 
     Wall columns (see _is_wall) are solid, recolored one uniform frame
-    material top to bottom - no gradient, no accent, no randomness.
-    Interior columns - and any wall whose cell tapers to less than
-    crust_depth this close to the rim (see cell_depth) - are cleared
-    entirely below the shared crust cap (crust_depth - the minimum
-    top-crust thickness every column is guaranteed to have), so a cell
-    with no meaningful tube length just sits flush with the platform,
-    never hanging a wall stub past the crust's own edge, and each real
-    tube reads as an open shaft - air inside, walls only - rather than a
-    filled comb block.
+    material top to bottom - no gradient, no accent, no randomness - and
+    filled all the way up to that COLUMN'S OWN actual crust bottom (read
+    directly back from the already-placed blocks, not the shared minimum
+    crust_depth - top_thickness_range varies per column 4-6 deep, so a
+    fixed cutoff either stopped short of a deeper column's real crust,
+    leaving a visible gap, or overwrote part of a shallower one), so every
+    wall touches the wood with no gap. Interior columns - and any wall
+    whose cell tapers to less than crust_depth this close to the rim (see
+    cell_depth) - are cleared entirely below the shared crust cap
+    (crust_depth - the minimum top-crust thickness every column is
+    guaranteed to have), so a cell with no meaningful tube length just sits
+    flush with the platform, never hanging a wall stub past the crust's own
+    edge, and each real tube reads as an open shaft - air inside, walls
+    only - rather than a filled comb block.
 
     Unlike desert.py's mesa terracing (subtractive only), this is
     deliberately also additive so every wall in a cell lines up exactly;
@@ -162,7 +167,12 @@ def _honeycomb_cells(blocks, col_bottom, columns, max_depth, crust_depth):
         target = cell_depth(cell)
         bottomY, _, _, _ = col_bottom[(x, z)]
         new_bottomY = topY - target
-        crust_bottom = topY - crust_depth + 1
+        # this column's OWN actual crust bottom (see docstring above), not
+        # the shared minimum crust_depth - guarantees the wall touches the
+        # wood exactly, whatever this particular column's crust thickness is
+        crust_bottom = topY
+        while blocks.get((x, crust_bottom - 1, z)) == "minecraft:spruce_planks":
+            crust_bottom -= 1
 
         if target > 0 and _is_wall(x, z, HEX_SIZE):
             # trim any natural excess below the tube's own cutoff, then

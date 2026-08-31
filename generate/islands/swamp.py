@@ -28,13 +28,14 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Swamp stone crust down to plain rock at the core - kept to 2 solid bands (no
-# fleck/dither); the mangrove-root colors are reserved exclusively for the
-# rim skirt's root trunks (see _grow_root_trunks) so roots read as a
-# distinct material growing off the island, not more bulk texture.
+# Swamp stone crust down to Botania's metamorphic mountain stone at the
+# core - kept to 2 solid bands (no fleck/dither); the mangrove-root colors
+# are reserved exclusively for the rim skirt's root trunks (see
+# _grow_root_trunks) so roots read as a distinct material growing off the
+# island, not more bulk texture.
 GRADIENT = [
     "botania:biomestonea_swamp",
-    "minecraft:stone",
+    "botania:biomestonea_mountain",
 ]
 
 RIM_BAND = (0.5, 0.95)  # r/localR range that keeps full depth + grows roots
@@ -165,7 +166,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
     flat_top        - if True (default), the top surface is a single flat
                        Y level. Outline is still irregular.
     top_thickness_range - (min, max) number of swamp-stone crust layers, before
-                       the root/clay gradient starts.
+                       the mountain-stone gradient starts.
     num_drips / drip_density - see grass.py; here each "drip" is a hanging
                        clump of muck, distinct from the dedicated root
                        trunks grown from the rim skirt.
@@ -257,8 +258,8 @@ def generate_scene(seed=0):
 
 BLOCK_COLORS = {
     "botania:biomestonea_swamp": "#5a6b4d",
+    "botania:biomestonea_mountain": "#6b6a5f",
     "minecraft:mangrove_roots": "#5a3d28",
-    "minecraft:stone": "#8a8a8a",
     "minecraft:moss_carpet": "#4f7a2a",
     "minecraft:mangrove_log": "#5c2a2a",
     "minecraft:mangrove_leaves": "#4a6b2a",
