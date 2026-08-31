@@ -3,20 +3,20 @@ Volcanic Floating Island Generator for Minecraft
 =================================================
 
 A volcanic-themed island variant: dark igneous stone instead of
-grass/dirt/stone. The top crust is solid black (blackstone, with rare
-obsidian flecks), then color gradually shifts to a darker grey with depth
-- basalt, deepslate, cobbled deepslate, tuff - as you move down toward the
-underside, with per-column/per-voxel noise so the banding isn't a
-perfectly smooth gradient. Mostly pure stone-color grading, kept dark top
-to bottom (no light greys or white stone), but with sparse glowing magma
-veins running through the body and a slightly sharper underside taper than
-grass.py's - a rocky mass still cooling from underneath, not just a
-recolored copy of the same shape.
+grass/dirt/stone. Deliberately simple palette - a grey basalt crust on
+top, black rock underneath, with no gradient banding or per-voxel noise -
+plus sparse single-block magma accents scattered through the body (each
+one an isolated voxel, never a vein/cluster) as the one deliberate point
+of visual interest, not bulk ore texture. The interior isn't meant to be
+seen in depth (these islands end up hollow once built), so most of the
+visual interest still comes from the silhouette/taper/drip shape and the
+crust/body color contrast. A slightly sharper underside taper than
+grass.py's - a rocky mass, not just a recolored copy of the same shape.
 Meant to sit around spire.py's dark tower.
 
 Shares its silhouette/taper/drip machinery with the other island themes
 in generate/islands/ (see common.py) - this file only supplies the
-volcanic-specific block choices and gradient logic.
+volcanic-specific block choices.
 
 Outputs (into --out-dir, default generate/output/tmp):
   1. A .npz Structure (block-index array + Atlas legend) in the same
@@ -31,41 +31,25 @@ Usage:
     python volcano.py --diameter 40 --seed 7
 """
 
-import math
-
 import common
 
 # ---------------------------------------------------------------------------
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Dark-to-less-dark stone gradient, in order from the black crust down to
-# the (still dark) grey found deep underneath / at drip tips. Deliberately
-# stays in the black/dark-grey range - no light or white stone. Kept to just
-# 3 solid bands (no fleck/dither) so the taper reads as clean strata instead
-# of static; the magma veins below are what carries the visual interest.
-GRADIENT = [
-    "minecraft:blackstone",
-    "minecraft:basalt",
-    "minecraft:deepslate",
-]
+# Two blocks, deliberately: a grey crust and a black body. No gradient
+# stack, no noise-driven banding - "random ore and other bullshit" was
+# explicitly called out as unwanted, so this stays plain apart from the
+# one sparse accent below. Shape + this one color contrast is what's meant
+# to read as interesting, not surface detail.
+TOP_CRUST_BLOCK = "projectred_exploration:stone_basalt"
+BODY_BLOCK = "minecraft:blackstone"
 
-
-def pick_gradient(rng, t, jitter=0.0):
-    """Picks a stone block for depth-fraction t in [0, 1] (0 = right at the
-    black crust, 1 = deepest/lightest). `jitter` (in gradient-index units,
-    can be negative, driven only by smooth per-column noise) nudges the
-    whole column toward a neighboring shade so band edges are wavy instead
-    of a razor-straight ring, without introducing per-voxel dithering."""
-    n = len(GRADIENT)
-    pos = min(max(t, 0.0), 1.0) * (n - 1) + jitter
-    idx = int(round(min(max(pos, 0.0), n - 1)))
-    return GRADIENT[idx]
-
-
-def pick_black(rng):
-    """Top-crust block: solid black, no fleck - the crust is a flat platform."""
-    return "minecraft:blackstone"
+# Sparse magma accents through the body - single isolated voxels, never a
+# vein or cluster (that's the "ore" look this theme deliberately avoids
+# elsewhere). Low enough odds that most columns have none at all.
+ACCENT_BLOCK = "minecraft:magma_block"
+ACCENT_CHANCE = 0.015
 
 
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
@@ -73,52 +57,29 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
                      decorate_underside=True, offset=(0, 0, 0)):
     """Returns dict {(x, y, z): "minecraft:block_id"} for one volcanic
     island, positioned with its center at `offset`. Same silhouette/taper/
-    drip machinery as the other island themes, but re-themed: solid black
-    crust on top, gradually lightening (but staying dark) stone body as
-    depth increases, and dark root-drips on the underside.
+    drip machinery as the other island themes, but re-themed: grey basalt
+    crust on top, solid black rock body, dark drips on the underside.
 
     diameter        - island top diameter in blocks (radius = diameter / 2)
     flat_top        - if True (default), the top surface is a single flat
                        Y level. Outline is still irregular.
-    top_thickness_range - (min, max) number of crust layers, forced solid
-                       black, before the color gradient starts. Varies
-                       smoothly across the island.
+    top_thickness_range - (min, max) number of crust layers before the body
+                       starts. Varies smoothly across the island.
     num_drips / drip_density - see grass.py; same auto-scaling behavior.
-    decorate_top     - if True, scatters small basalt columns on top. Off
-                       by default so the surface stays buildable.
-    decorate_underside - hanging root drips on the rock underside. On by
+    decorate_top     - if True, scatters small crust-block columns on top.
+                       Off by default so the surface stays buildable.
+    decorate_underside - hanging drips on the rock underside. On by
                        default.
     """
     size, half, radius = common.grid_dims(diameter)
 
-    def grid_for(cell_blocks, minimum=6):
-        return max(minimum, size // cell_blocks)
-
-    # per-column offset (in gradient-index units) so the dark->light
-    # transition isn't a perfectly smooth function of depth alone - a
-    # coarse field for broad blotches plus a finer one for speckle
-    gradient_noise = common.value_noise_2d(size, grid_for(4, 8), seed + 9) * 1.8
-    speckle_noise = common.value_noise_2d(size, grid_for(2, 12), seed + 13) * 1.1
-
-    # a per-column vein-phase field, same trick as crystal.py's amethyst
-    # veins: combined with a sine of y_offset it traces wavy seams of magma
-    # through the bulk rock (a still-cooling volcano) instead of independent
-    # single-voxel flecks.
-    lava_vein_noise = common.value_noise_2d(size, grid_for(3, 7), seed + 23)
-    LAVA_VEIN_THRESHOLD = 0.93
-
     def top_block(rng, x, z, xi, zi):
-        return pick_black(rng)
+        return TOP_CRUST_BLOCK
 
     def body_block(rng, x, z, xi, zi, y_offset, thickness, total_depth):
         if y_offset < thickness:
-            return pick_black(rng)
-        g_jitter = gradient_noise[xi, zi] + speckle_noise[xi, zi]
-        t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        vein_phase = math.sin(y_offset * 0.6 + lava_vein_noise[xi, zi] * 5.0)
-        if vein_phase > LAVA_VEIN_THRESHOLD:
-            return "minecraft:magma_block"
-        return pick_gradient(rng, t_grad, jitter=g_jitter)
+            return TOP_CRUST_BLOCK
+        return ACCENT_BLOCK if rng.random() < ACCENT_CHANCE else BODY_BLOCK
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -131,9 +92,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):
-            # drips hang below the island's own deepest point, so they sit
-            # at the pale, deep end of the gradient - solid, no dither.
-            return "minecraft:deepslate"
+            return BODY_BLOCK
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
@@ -141,17 +100,17 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         # a few bare hanging dark "icicles" near the outer rim (replaces
         # grass.py's draped vines)
         common.decorate_rim_underside(rng, blocks, columns, col_bottom,
-                                       rim_block_fn=lambda rng: "minecraft:deepslate",
+                                       rim_block_fn=lambda rng: BODY_BLOCK,
                                        r_frac_threshold=0.55, chance=0.12, length_range=(1, 3))
 
     if decorate_top:
-        # a couple of small basalt columns (replaces grass.py's trees)
+        # a couple of small crust-block columns (replaces grass.py's trees)
         column_spots = [c for c in columns if c[4] / c[5] < 0.55]
         rng.shuffle(column_spots)
         for (x, z, topY, depth, r, localR) in column_spots[: rng.randint(0, 2)]:
             col_h = rng.randint(2, 4)
             for dy in range(col_h):
-                blocks[(x, topY + 1 + dy, z)] = "minecraft:polished_basalt"
+                blocks[(x, topY + 1 + dy, z)] = TOP_CRUST_BLOCK
 
     # apply world offset
     ox, oy, oz = offset
@@ -161,7 +120,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 def generate_scene(seed=0):
     """Ring of volcanic islands plus a couple of floating debris chunks,
     meant to sit around a central spire."""
-    return common.basic_scene(seed, generate_island, debris_block="minecraft:blackstone")
+    return common.basic_scene(seed, generate_island, debris_block=BODY_BLOCK)
 
 
 # ---------------------------------------------------------------------------
@@ -169,10 +128,8 @@ def generate_scene(seed=0):
 # ---------------------------------------------------------------------------
 
 BLOCK_COLORS = {
-    "minecraft:blackstone": "#2b2626",
-    "minecraft:deepslate": "#393a3d",
-    "minecraft:basalt": "#4a484c",
-    "minecraft:polished_basalt": "#5a5760",
+    "projectred_exploration:stone_basalt": "#6e6b64",
+    "minecraft:blackstone": "#211f1f",
     "minecraft:magma_block": "#c9591a",
 }
 

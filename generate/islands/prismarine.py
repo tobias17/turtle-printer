@@ -163,9 +163,10 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
                        before the dark-prismarine/rock gradient starts.
     num_drips / drip_density - see grass.py; here each "drip" is a hanging
                        chunk of masonry rubble.
-    decorate_top     - if True, scatters sea pickles and kelp on top.
-    decorate_underside - tower shaping, hanging rubble and kelp fringe on
-                       the underside. On by default.
+    decorate_top     - if True, scatters sea-lantern accents and small
+                       rubble spikes on top.
+    decorate_underside - tower shaping, hanging rubble and a rubble fringe
+                       on the underside. On by default.
     """
     size, half, radius = common.grid_dims(diameter)
 
@@ -200,25 +201,29 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
 
-        # kelp fringe draped from the rim
+        # eroded masonry rubble fringe draped from the rim - a plain solid
+        # block, not kelp: kelp only exists attached to/inside water,
+        # which nothing in this dry floating-island build ever has
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:kelp",
+            rim_block_fn=lambda rng: "minecraft:dark_prismarine",
             r_frac_threshold=0.55, chance=0.15, length_range=(2, 5),
         )
 
     if decorate_top:
-        # sparse sea pickle clusters and kelp stalks on the top surface
+        # sparse glowing sea-lantern accents and small rubble spikes on
+        # the top surface - not sea pickles/kelp, which only exist in or
+        # on water
         for (x, z, topY, depth, r, localR) in columns:
             if r / localR < 0.9 and rng.random() < 0.1:
-                blocks.setdefault((x, topY + 1, z), "minecraft:sea_pickle")
+                blocks.setdefault((x, topY + 1, z), "minecraft:sea_lantern")
 
-        kelp_spots = [c for c in columns if c[4] / c[5] < 0.55]
-        rng.shuffle(kelp_spots)
-        for (x, z, topY, depth, r, localR) in kelp_spots[: rng.randint(0, 4)]:
-            kelp_h = rng.randint(2, 5)
-            for dy in range(kelp_h):
-                blocks[(x, topY + 1 + dy, z)] = "minecraft:kelp"
+        spike_spots = [c for c in columns if c[4] / c[5] < 0.55]
+        rng.shuffle(spike_spots)
+        for (x, z, topY, depth, r, localR) in spike_spots[: rng.randint(0, 4)]:
+            spike_h = rng.randint(2, 5)
+            for dy in range(spike_h):
+                blocks[(x, topY + 1 + dy, z)] = "minecraft:dark_prismarine"
 
     # apply world offset
     ox, oy, oz = offset
@@ -239,8 +244,6 @@ BLOCK_COLORS = {
     "minecraft:prismarine_bricks": "#6fc2ad",
     "minecraft:dark_prismarine": "#2f5a4a",
     "minecraft:sea_lantern": "#d6f0e0",
-    "minecraft:kelp": "#3f7a3f",
-    "minecraft:sea_pickle": "#a8c93a",
 }
 
 
@@ -259,7 +262,7 @@ def main():
         scene_title_fn=lambda seed: f"ocean monument multi-island demo scene (seed={seed})",
         num_drips_help=("number of hanging masonry rubble chunks (default: auto-scales with "
                          "the island's rim geometry - see --drip-density)"),
-        decorate_top_help="scatter sea pickles and kelp on top (off by default)",
+        decorate_top_help="scatter sea-lantern accents and rubble spikes on top (off by default)",
     )
 
 

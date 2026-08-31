@@ -116,6 +116,12 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
             for dy in range(cactus_h):
                 blocks[(x, topY + 1 + dy, z)] = "minecraft:cactus"
 
+    # a rim column can taper closed within its own sand-crust thickness,
+    # leaving sand (gravity-affected - falls with nothing solid beneath it,
+    # and can't be turtle-placed bottom-up either) exposed at the very
+    # bottom - see common.fix_floating_gravity.
+    common.fix_floating_gravity(blocks, columns, col_bottom, lambda x, z: "minecraft:sandstone")
+
     # apply world offset
     ox, oy, oz = offset
     return {(x + ox, y + oy, z + oz): b for (x, y, z), b in blocks.items()}

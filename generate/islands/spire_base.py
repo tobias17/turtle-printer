@@ -2,19 +2,18 @@
 Spire-Base Floating Island Generator for Minecraft
 =====================================================
 
-A deliberately plain, generic dark-stone island: no veins, no vines, no
-drips, no top scatter - just a flat dark stone crust tapering down into a
-slightly different dark stone underneath, using the same shared taper
-shape every other theme uses. Exists purely as the base spire.py's tower
-stands on (see generate/scene.py) - the platform shouldn't compete
-visually with the tower sitting on it, so this is the plainest palette/
-decoration of any theme in generate/islands/, not a themed island of its
-own.
+A deliberately plain, generic island: no veins, no vines, no drips, no
+top scatter, no gradient - solid black concrete throughout, using the
+same shared taper shape every other theme uses. Exists purely as the base
+spire.py's tower stands on (see generate/scene.py) - the platform
+shouldn't compete visually with the tower sitting on it, so this is the
+plainest palette/decoration of any theme in generate/islands/, not a
+themed island of its own.
 
 Shares its silhouette/taper machinery with the other island themes in
-generate/islands/ (see common.py) - this file only supplies a minimal
-two-block dark-stone gradient and skips every theme's usual optional
-decoration (drips, rim vines, top scatter) entirely.
+generate/islands/ (see common.py) - this file only supplies a single flat
+black-concrete block and skips every theme's usual optional decoration
+(drips, rim vines, top scatter, depth gradient) entirely.
 
 Usage:
     python spire_base.py --diameter 40
@@ -27,33 +26,15 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Plain dark stone, crust down through a slightly lighter dark stone at the
-# core - just 2 solid bands, no fleck/dither, no veins: deliberately the
-# least visually busy palette of any theme, so it reads as a neutral plinth.
-GRADIENT = [
-    "minecraft:deepslate",
-    "minecraft:cobbled_deepslate",
-]
+# One block, top to bottom - no gradient, no fleck: deliberately the least
+# visually busy palette of any theme, so it reads as a neutral plinth.
+BLOCK = "minecraft:black_concrete"
 
 # Callers (scene.py, rollup.py) size max_depth the same way for every theme
 # - roughly diameter / 2 - but a plain flat plinth reads better a bit
 # shallower than that shared default, so this theme trims its own
 # max_depth locally rather than changing the shared convention.
 DEPTH_FRAC = 0.8
-
-
-def pick_gradient(rng, t):
-    """Picks a block for depth-fraction t in [0, 1] (0 = right at the
-    crust, 1 = deepest). No jitter/noise here on purpose - a razor-straight
-    band edge is fine, this theme isn't meant to draw the eye."""
-    n = len(GRADIENT)
-    idx = int(round(min(max(t, 0.0), 1.0) * (n - 1)))
-    return GRADIENT[idx]
-
-
-def pick_crust(rng):
-    """Top-crust block: solid dark stone, no fleck - a flat, plain platform."""
-    return "minecraft:deepslate"
 
 
 def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=14,
@@ -79,13 +60,10 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     size, half, radius = common.grid_dims(diameter)
 
     def top_block(rng, x, z, xi, zi):
-        return pick_crust(rng)
+        return BLOCK
 
     def body_block(rng, x, z, xi, zi, y_offset, thickness, total_depth):
-        if y_offset < thickness:
-            return pick_crust(rng)
-        t_grad = (y_offset - thickness) / max(1, total_depth - thickness)
-        return pick_gradient(rng, t_grad)
+        return BLOCK
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -97,8 +75,8 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 
 
 def generate_scene(seed=0):
-    """One plain dark-stone island plus satellites and floating debris."""
-    return common.basic_scene(seed, generate_island, debris_block="minecraft:deepslate")
+    """One plain black-concrete island plus satellites and floating debris."""
+    return common.basic_scene(seed, generate_island, debris_block=BLOCK)
 
 
 # ---------------------------------------------------------------------------
@@ -106,8 +84,7 @@ def generate_scene(seed=0):
 # ---------------------------------------------------------------------------
 
 BLOCK_COLORS = {
-    "minecraft:deepslate": "#393a3d",
-    "minecraft:cobbled_deepslate": "#46474b",
+    "minecraft:black_concrete": "#0f0f10",
 }
 
 

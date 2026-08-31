@@ -5,8 +5,8 @@ Frozen Floating Island Generator for Minecraft
 A frozen/tundra island variant: a solid snow crust on top, grading down
 through packed ice into plain stone at the core - like a chunk of frozen
 tundra torn free of the ground, ice near the surface, bare rock deeper
-down. Blue ice is reserved for the hanging icicles (packed-ice shafts with
-blue-ice tips) so it reads as an accent, not bulk noise. The underside
+down. Hanging icicles are packed-ice shafts too - no separate accent
+block. The underside
 shatters into alternating tall/short wedges (see _fracture_columns) instead
 of a smooth cone - a calved glacier chunk, not an iceberg cone.
 
@@ -29,8 +29,7 @@ import common
 
 # Icy crust down to a bare rock core - deliberately doesn't stay ice all the
 # way down, so the underside reads as "frozen chunk of ground", not a solid
-# iceberg. Kept to 3 solid bands (no fleck/dither); blue ice is reserved for
-# the icicle drips/tips so it reads as an accent, not bulk noise.
+# iceberg. Kept to 3 solid bands (no fleck/dither).
 GRADIENT = [
     "minecraft:snow_block",
     "minecraft:packed_ice",
@@ -152,11 +151,11 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     _fracture_columns(blocks, col_bottom, columns, rng, size, half, seed, max_depth)
 
     if decorate_underside:
-        # icicles are their own small ice palette, distinct from the rocky
-        # gradient the island's body ends in - they read as ice growing off
-        # the frozen underside, not more of the core rock.
+        # icicles are solid packed ice, distinct from the rocky gradient
+        # the island's body ends in - they read as ice growing off the
+        # frozen underside, not more of the core rock.
         def drip_block(rng, t, is_tip):
-            return "minecraft:blue_ice" if is_tip else "minecraft:packed_ice"
+            return "minecraft:packed_ice"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
@@ -207,7 +206,6 @@ BLOCK_COLORS = {
     "minecraft:snow_block": "#eef4fa",
     "minecraft:snow": "#ffffff",
     "minecraft:packed_ice": "#a8d2e8",
-    "minecraft:blue_ice": "#74b9e0",
     "minecraft:stone": "#8a8a8a",
     "minecraft:spruce_log": "#3b2a1a",
     "minecraft:spruce_leaves": "#3a5a45",

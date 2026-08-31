@@ -33,7 +33,8 @@ from utils import Atlas, Structure, render_screenshot, value_noise_2d  # noqa: E
 __all__ = [
     "Atlas", "Structure", "render_screenshot", "value_noise_2d",
     "weighted_choice", "grid_dims", "drip_radius_profile", "carve_columns",
-    "generate_drips", "decorate_rim_underside", "basic_scene",
+    "generate_drips", "decorate_rim_underside", "GRAVITY_BLOCKS",
+    "fix_floating_gravity", "basic_scene",
     "blocks_to_structure", "preview", "build_arg_parser", "run_cli",
 ]
 
@@ -237,7 +238,9 @@ def generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
         radius (default: island.py's `round(diameter / 40)`).
     after_drip_fn(rng, blocks, x, tip_y, z), optional -> called once per
         generated drip with the position just past its tip, for
-        theme-specific extras (e.g. island.py's occasional trailing vine).
+        theme-specific extras (e.g. grass.py's occasional trailing mossy
+        block - must be an ordinary solid block, same as rim_block_fn in
+        decorate_rim_underside below, and for the same reason).
 
     Mutates `blocks` in place; returns nothing.
     """
@@ -296,15 +299,59 @@ def generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
 
 def decorate_rim_underside(rng, blocks, columns, col_bottom, rim_block_fn,
                             r_frac_threshold=0.55, chance=0.18, length_range=(2, 6)):
-    """Shared thin-decoration-draped-from-the-rim loop (island.py's vines,
-    volcano.py's bare icicles, etc). Skips columns whose bottom face is
-    already the deepest point elsewhere near the true rim."""
+    """Shared thin-decoration-draped-from-the-rim loop (grass.py's mossy
+    accents, volcano.py's bare icicles, etc). Skips columns whose bottom
+    face is already the deepest point elsewhere near the true rim.
+
+    rim_block_fn must return an ordinary solid block - this hangs a
+    straight chain of blocks below each chosen column's own bottom with
+    nothing beside or below any of them (only the block above holds each
+    one up, and only in the loose "nothing's there to stop it floating"
+    sense every ordinary block already has - see the printer-buildability
+    rules in AGENTS.md). A block whose own placement rules depend on that
+    (vine's attachment face, carpet needing solid support *underneath*
+    it, any block that only exists next to water) breaks here - vine
+    reads fine in-game because the client auto-attaches it to a solid
+    neighbor, but nothing in this project's turtle-build pipeline
+    resolves attachment faces, so it isn't something a turtle can be
+    told to place the same way a plain cube is."""
     lo, hi = length_range
     for (x, z, topY, depth, r, localR) in columns:
         if r / localR > r_frac_threshold and rng.random() < chance:
             bottomY, _, _, _ = col_bottom[(x, z)]
             for vy in range(rng.randint(lo, hi)):
                 blocks.setdefault((x, bottomY - vy, z), rim_block_fn(rng))
+
+
+# ---------------------------------------------------------------------------
+# Printer-buildability: no column may expose a gravity-affected block
+# (sand/red_sand/gravel - falls with nothing solid beneath it, and can't be
+# safely turtle-placed bottom-up either) at its own true bottom.
+# ---------------------------------------------------------------------------
+
+GRAVITY_BLOCKS = frozenset({"minecraft:sand", "minecraft:red_sand", "minecraft:gravel"})
+
+
+def fix_floating_gravity(blocks, columns, col_bottom, fallback_block_fn):
+    """Recolors just the bottom-most voxel of any column whose crust
+    material is a gravity block (see GRAVITY_BLOCKS) and whose natural
+    taper happens to end before it ever transitions to the theme's own
+    (non-gravity) gradient - a real case, not a hypothetical one: a
+    column near the true rim can taper closed within its own crust
+    thickness, in which case every voxel body_block_fn ever placed there,
+    all the way to the exposed bottom face, is still "y_offset < thickness"
+    crust. `fallback_block_fn(x, z) -> block name` supplies the theme's
+    own safe substitute (its gradient's own first non-gravity band, e.g.
+    desert.py/coral.py's "minecraft:sandstone", mesa.py's
+    "minecraft:orange_terracotta"). Call this last, after every other
+    post-process (terracing, drips, rim decor) - a drip or rim chain added
+    below a formerly-exposed crust voxel supports it either way, so
+    checking after is always at least as correct as checking before, and
+    definitely never wrong."""
+    for (x, z, topY, depth, r, localR) in columns:
+        bottomY, _, _, _ = col_bottom[(x, z)]
+        if blocks.get((x, bottomY, z)) in GRAVITY_BLOCKS:
+            blocks[(x, bottomY, z)] = fallback_block_fn(x, z)
 
 
 # ---------------------------------------------------------------------------

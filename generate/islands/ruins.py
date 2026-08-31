@@ -4,12 +4,11 @@ Overgrown Ruins Floating Island Generator for Minecraft
 
 An ancient-temple island variant: cracked, moss-swallowed masonry instead
 of natural rock or earth. A moss-and-stone-brick crust on top (broken
-temple flooring reclaimed by jungle), grading down through stone brick,
-cracked stone brick and cobblestone into the plain rock core every island
-theme shares underneath. Rather than a smooth tapering cone, the underside
+temple flooring reclaimed by jungle), grading down through stone brick
+into mossy cobblestone at the core. Rather than a smooth tapering cone, the underside
 collapses in blocky masonry tiers, with a couple of thick square "broken
 pillar" stubs still hanging on - remnants of the temple's support columns -
-all draped in vines.
+all lightly mossed over.
 
 Shares its silhouette/taper/drip machinery with the other island themes in
 generate/islands/ (see common.py) - this file only supplies the ruins-
@@ -28,12 +27,12 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Mossy masonry crust down through stone brick into cobblestone at the
+# Mossy masonry crust down through stone brick into mossy cobblestone at the
 # core - kept to 2 solid bands (no fleck/dither) so the terrace steps below
 # read as clean masonry tiers.
 GRADIENT = [
     "minecraft:mossy_stone_bricks",
-    "minecraft:cobblestone",
+    "minecraft:mossy_cobblestone",
 ]
 
 NUM_TIERS = 3  # blocky masonry terraces, same quantize-the-natural-taper trick
@@ -98,7 +97,7 @@ def _terrace_and_pillars(blocks, col_bottom, columns, rng, max_depth):
         if (x, z) in pillar_xy:
             for y in range(bottomY, topY):
                 blocks[(x, y, z)] = ("minecraft:mossy_stone_bricks" if rng.random() < 0.5
-                                      else "minecraft:cobblestone")
+                                      else "minecraft:mossy_cobblestone")
             new_columns.append((x, z, topY, depth, r, localR))
             continue
         new_depth = band_size * (depth // band_size)
@@ -129,7 +128,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     decorate_top     - if True, scatters jungle saplings and broken-pillar
                        stumps on top.
     decorate_underside - terraced masonry, broken pillars, hanging rubble
-                       and heavy vine cover on the underside. On by default.
+                       and mossy accents on the underside. On by default.
     """
     size, half, radius = common.grid_dims(diameter)
 
@@ -161,24 +160,27 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):
-            return "minecraft:cobblestone" if is_tip else "minecraft:mossy_stone_bricks"
+            return "minecraft:mossy_cobblestone" if is_tip else "minecraft:mossy_stone_bricks"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
 
-        # light vine cover near the rim only - an accent, not a curtain, so
-        # the stepped masonry tiers stay the visual focus
+        # light mossy-brick cover near the rim only - an accent, not a
+        # curtain, so the stepped masonry tiers stay the visual focus. A
+        # plain solid block, not vine: nothing in this project's turtle-
+        # build pipeline resolves an attachment face the way vine needs
+        # (see common.decorate_rim_underside's own docstring)
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:vine",
+            rim_block_fn=lambda rng: "minecraft:mossy_stone_bricks",
             r_frac_threshold=0.5, chance=0.12, length_range=(2, 4),
         )
 
-        # the occasional vine dangling from just under the top edge, over
+        # the occasional mossy-brick outcrop just under the top edge, over
         # the cliff face
         for (x, z, topY, depth, r, localR) in columns:
             if r / localR > 0.75 and rng.random() < 0.08:
-                blocks.setdefault((x, topY - 1, z), "minecraft:vine")
+                blocks.setdefault((x, topY - 1, z), "minecraft:mossy_stone_bricks")
 
     if decorate_top:
         # sparse jungle saplings and moss carpet on the top surface - fern/
@@ -198,7 +200,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
             stump_h = rng.randint(1, 3)
             for dy in range(stump_h):
                 blocks[(x, topY + 1 + dy, z)] = ("minecraft:mossy_stone_bricks" if rng.random() < 0.6
-                                                  else "minecraft:cobblestone")
+                                                  else "minecraft:mossy_cobblestone")
 
     # apply world offset
     ox, oy, oz = offset
@@ -207,7 +209,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 
 def generate_scene(seed=0):
     """One big ruins island plus satellites and floating rubble debris."""
-    return common.basic_scene(seed, generate_island, debris_block="minecraft:cobblestone")
+    return common.basic_scene(seed, generate_island, debris_block="minecraft:mossy_cobblestone")
 
 
 # ---------------------------------------------------------------------------
@@ -217,8 +219,7 @@ def generate_scene(seed=0):
 BLOCK_COLORS = {
     "minecraft:moss_block": "#5a7a2f",
     "minecraft:mossy_stone_bricks": "#6a7a5a",
-    "minecraft:cobblestone": "#7a7a7a",
-    "minecraft:vine": "#3f6b2a",
+    "minecraft:mossy_cobblestone": "#748266",
     "minecraft:moss_carpet": "#4f7a2a",
     "minecraft:fern": "#4f8f3f",
     "minecraft:jungle_sapling": "#5f9f3f",

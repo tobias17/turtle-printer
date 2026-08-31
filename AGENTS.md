@@ -55,6 +55,13 @@ maturity:
    in that table by design (no automatic/guessed fallback) — if you add a
    block to any `generate/` module, add its mapping to `LEGACY_MAP` too,
    or importing will fail loudly rather than placing the wrong block.
+   `world_import/patch_amulet.py` must be run once after installing/
+   reinstalling `amulet-core` - that package's Java 1.12.2 chunk encoder
+   has a real upstream bug (inverted if/else) that silently zeroes out
+   every chunk's HeightMap on save otherwise, which caused a real,
+   hard-to-diagnose in-game crash (see that file's docstring for the full
+   story). `import_structure.py` does NOT apply this itself; it's a
+   one-time environment fix, not a per-import step.
 
 ## `generate/` conventions
 

@@ -16,4 +16,9 @@ mcschematic
 # world save. Pulls in numpy<2 (pins numpy down from whatever's otherwise
 # installed) - everything else in this file has been confirmed to still
 # work fine under that older numpy.
+# IMPORTANT: after installing/reinstalling this, run
+# `python world_import/patch_amulet.py` once - amulet-core 1.9.44 has a
+# real bug (inverted if/else in its Java 1.12.2 chunk encoder) that
+# silently corrupts every chunk's HeightMap otherwise. See
+# world_import/patch_amulet.py's docstring.
 amulet-core

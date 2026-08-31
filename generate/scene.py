@@ -94,14 +94,14 @@ HOST_MODULE = spire_base  # the plain dark-stone platform the spire is planted o
 # against every theme module's own top_block function) - used only to look
 # up that theme's representative color for _place_closest's color spread.
 TOP_BLOCK = {
-    "grass": "minecraft:grass_block", "volcano": "minecraft:blackstone",
+    "grass": "minecraft:grass_block", "volcano": "projectred_exploration:stone_basalt",
     "snow": "minecraft:snow_block", "desert": "minecraft:sand", "mesa": "minecraft:red_sand",
-    "mushroom": "minecraft:mycelium", "bones": "minecraft:bone_block",
+    "mushroom": "minecraft:red_mushroom_block", "bones": "minecraft:bone_block",
     "crystal": "minecraft:purpur_block", "coral": "minecraft:sand",
-    "ruins": "minecraft:moss_block", "swamp": "minecraft:mud",
-    "prismarine": "minecraft:prismarine_bricks", "hive": "minecraft:honeycomb_block",
+    "ruins": "minecraft:moss_block", "swamp": "botania:biomestonea_swamp",
+    "prismarine": "minecraft:prismarine_bricks", "hive": "minecraft:spruce_planks",
 }
-HOST_TOP_COLOR = spire_base.BLOCK_COLORS["minecraft:deepslate"]  # for _place_closest's color spread
+HOST_TOP_COLOR = spire_base.BLOCK_COLORS["minecraft:black_concrete"]  # for _place_closest's color spread
 
 DIAMETER_RANGE = (100, 120)
 GAP = 18  # minimum clear void every pair of islands (host included) must keep between their footprints

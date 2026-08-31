@@ -2,18 +2,18 @@
 Sauron's Spire Generator (~150 blocks tall)
 =============================================
 Procedurally builds a voxel model of a colossal dark-lord tower: a tall,
-mostly-circular black-stone shaft with a single continuous taper (no
+mostly-circular basalt-brick shaft with a single continuous taper (no
 lips or overhanging platforms) wrapped by a raised ridge that spirals up
-the whole height like a walkable staircase, hollow all the way up
-(floors threaded by a ladder shaft) so there's a huge amount of hidden
-interior space to build in. It's topped by a crown of four black claw
+the whole height like a walkable staircase, hollow all the way up (one
+open shaft, no floors or ladder inside) so there's a huge amount of
+hidden interior space to build in. It's topped by a crown of four claw
 pillars, one at each cardinal direction, reaching up beside a
 placeholder orange-wool orb (stand-in for a future draconic energy core).
 
 The exterior is deliberately left with no doorway or other opening --
-it should read as a solid, seamless tower from outside; the hollow
-interior is reached via the ladder shaft from the hatch at the top,
-under the crown.
+it should read as a solid, seamless tower from outside. The interior is
+one continuous open shaft top to bottom with no floors or ladder to reach
+it - build/access is left entirely up to whatever's placed inside later.
 
 The tower is deliberately built with a flat, un-flared bottom -- it's
 meant to be planted on top of a separately-generated floating island (see
@@ -54,7 +54,7 @@ from utils import Atlas, Structure, render_screenshot, spherical_bump_noise
 # ---------------------------------------------------------------------------
 # Grid setup -- sized for a ~160 block tall spire with clawed crown spikes
 # ---------------------------------------------------------------------------
-(AIR, WALL, FLOOR, LADDER, SPIKE, ORB) = range(6)
+(AIR, WALL, ORB) = range(3)
 
 SIZE_X, SIZE_Y, SIZE_Z = 140, 140, 200   # Z is "up" internally, swapped to Y at export
 CX, CY = SIZE_X // 2, SIZE_Y // 2
@@ -86,13 +86,6 @@ SHAFT_TOP = TIERS[-1]["z1"]
 STAIR_PITCH = 23.0
 STAIR_AMP = 2.5
 
-# --- interior -----------------------------------------------------------
-GROUND_FLOOR_Z = 3
-FLOOR_THICK = 2
-FLOOR_SPACING = 16
-TOP_FLOOR_MARGIN = 6       # last mid-floor sits this far below SHAFT_TOP, doubling as the roof
-HOLE_HALF = 1               # floor/collar hatch is a (2*HOLE_HALF+1) square around the ladder
-
 # --- crown / eye ----------------------------------------------------------
 COLLAR_Z0, COLLAR_Z1 = SHAFT_TOP, SHAFT_TOP + 4
 COLLAR_R = TIERS[-1]["r1"] + 5.5
@@ -101,18 +94,12 @@ GAP_TO_ORB = 8.0                # air gap kept between the major claw tips and t
 EYE_CENTER_Z = COLLAR_Z1 + 19
 
 BLOCK_NAMES = {
-    WALL: "minecraft:blackstone",
-    FLOOR: "minecraft:polished_blackstone_bricks",
-    LADDER: "minecraft:ladder[facing=west]",
-    SPIKE: "minecraft:polished_basalt",
+    WALL: "projectred_exploration:basalt_brick",
     ORB: "minecraft:orange_wool",
 }
 
 BLOCK_COLORS = {
-    "minecraft:blackstone": "#2b2530",
-    "minecraft:polished_blackstone_bricks": "#221e26",
-    "minecraft:ladder[facing=west]": "#4a3320",
-    "minecraft:polished_basalt": "#3a3640",
+    "projectred_exploration:basalt_brick": "#4a4640",
     "minecraft:orange_wool": "#d2691e",
 }
 
@@ -225,21 +212,6 @@ def hollow_radius(z):
     return max(0.0, outer_radius(z) - WALL_THICK)
 
 
-def ladder_xy(z):
-    """The ladder shaft hugs the interior wall (1 block clear of it) on
-    the +X side, tracking the taper so it's always adjacent to solid wall."""
-    r = max(2.0, hollow_radius(z) - 1.0)
-    return CX + int(round(r)), CY
-
-
-FLOOR_ZS = list(range(GROUND_FLOOR_Z + FLOOR_THICK + FLOOR_SPACING, SHAFT_TOP - TOP_FLOOR_MARGIN, FLOOR_SPACING))
-_top_fz = SHAFT_TOP - TOP_FLOOR_MARGIN
-if not FLOOR_ZS or _top_fz - FLOOR_ZS[-1] > FLOOR_SPACING // 2:
-    FLOOR_ZS.append(_top_fz)
-else:
-    FLOOR_ZS[-1] = _top_fz
-
-
 # ---------------------------------------------------------------------------
 # 1) Base + shaft: fluted tapering tower, hollowed out with floors and a
 #    ladder shaft. No exterior openings -- reads as a solid tower from
@@ -281,27 +253,7 @@ def build_tower(grid, seed):
         layer = grid[x0:x1, y0:y1, z]
         solid = dist <= boundary
         layer[solid] = WALL
-
-        if z < GROUND_FLOOR_Z + FLOOR_THICK:
-            if z >= GROUND_FLOOR_Z:
-                layer[dist <= r_in] = FLOOR   # solid ground floor, no hatch -- seals the bottom
-            continue
-
         layer[dist <= r_in] = AIR
-
-        on_floor = False
-        for fz in FLOOR_ZS:
-            if fz <= z < fz + FLOOR_THICK:
-                layer[dist <= r_in] = FLOOR
-                on_floor = True
-                break
-
-        lx, ly = ladder_xy(z)
-        if on_floor:
-            hx0, hx1 = max(0, lx - HOLE_HALF - x0), min(x1 - x0, lx + HOLE_HALF + 1 - x0)
-            hy0, hy1 = max(0, ly - HOLE_HALF - y0), min(y1 - y0, ly + HOLE_HALF + 1 - y0)
-            layer[hx0:hx1, hy0:hy1] = AIR
-        grid[lx, ly, z] = LADDER
 
 
 # ---------------------------------------------------------------------------
@@ -320,12 +272,6 @@ def build_crown(grid, seed):
         dist = np.sqrt(dx * dx + dy * dy)
         grid[x0:x1, y0:y1, z][dist <= COLLAR_R] = WALL
 
-    # ladder hatch punched straight up through the collar to an open landing
-    lx, ly = ladder_xy(SHAFT_TOP - 1)
-    grid[lx - HOLE_HALF: lx + HOLE_HALF + 1, ly - HOLE_HALF: ly + HOLE_HALF + 1, COLLAR_Z0:COLLAR_Z1] = AIR
-    for z in range(COLLAR_Z0, COLLAR_Z1):
-        grid[lx, ly, z] = LADDER
-
     rng = np.random.RandomState(seed + 900)
     n_minor, n_major = 10, 4
     # offset by a fixed 9 degrees (plus small jitter) so none of the 10 minor
@@ -340,7 +286,7 @@ def build_crown(grid, seed):
     for i, ang in enumerate(minor_angles):
         bx = CX + int(round((COLLAR_R - 3) * math.cos(ang)))
         by = CY + int(round((COLLAR_R - 3) * math.sin(ang)))
-        build_spike(grid, bx, by, COLLAR_Z1 - 2, ang, 58, 34, 13.0, 2.6, SPIKE, seed=seed + 30 + i)
+        build_spike(grid, bx, by, COLLAR_Z1 - 2, ang, 58, 34, 13.0, 2.6, WALL, seed=seed + 30 + i)
 
     # major pillars: each one is aimed at a point held GAP_TO_ORB blocks off
     # the orb's own surface (rather than an independent tilt path), so the
@@ -354,7 +300,7 @@ def build_crown(grid, seed):
         tx = CX + target_r * math.sin(beta) * math.cos(ang)
         ty = CY + target_r * math.sin(beta) * math.sin(ang)
         tz = EYE_CENTER_Z + target_r * math.cos(beta)
-        build_spike_to(grid, bx, by, COLLAR_Z1 - 2, tx, ty, tz, 3.4, SPIKE, seed=seed + 60 + i)
+        build_spike_to(grid, bx, by, COLLAR_Z1 - 2, tx, ty, tz, 3.4, WALL, seed=seed + 60 + i)
 
 
 # ---------------------------------------------------------------------------
@@ -410,8 +356,8 @@ def generate_spire(seed=3):
 
 
 def grid_to_structure(grid):
-    """Converts the internal uint8 grid (WALL/FLOOR/EYE_.../... ids) into
-    the project's canonical Structure, via an Atlas that maps those ids
+    """Converts the internal uint8 grid (AIR/WALL/ORB ids) into the
+    project's canonical Structure, via an Atlas that maps those ids
     directly onto real Minecraft block names."""
     atlas = Atlas()
     for internal_id in sorted(BLOCK_NAMES):

@@ -3,12 +3,16 @@ Coral Reef Floating Island Generator for Minecraft
 ====================================================
 
 A coral-reef island variant: a pale sandy reef-rock crust on top, grading
-down through sandstone and calcite into the plain rock core every island
-theme shares underneath. Rather than a solid tapering mass, the underside
-is mostly eroded down to a shallow shelf, with clumped patches of vividly
-colored coral blocks branching down further than the surrounding rock -
-like real coral colonies growing off a reef shelf, not a uniform cone.
-Sea pickles glow among the coral; kelp fringes hang from the rim.
+down through sandstone into the plain rock core every island theme shares
+underneath. Rather than a solid tapering mass, the underside is mostly
+eroded down to a shallow shelf, with clumped patches of vividly colored
+coral BLOCKS (the solid full-block variant, not the fragile water-attached
+coral/fan forms) branching down further than the surrounding rock - like
+real coral colonies growing off a reef shelf, not a uniform cone. This
+island floats in open air with no water anywhere, so nothing here depends
+on it: no kelp, no sea pickles, no coral fans - every block is an ordinary
+solid cube, placeable the same way flat ground is (see AGENTS.md's
+printer-buildability rules).
 
 Shares its silhouette/taper/drip machinery with the other island themes in
 generate/islands/ (see common.py) - this file only supplies the reef-
@@ -29,9 +33,15 @@ import common
 
 # Pale reef-rock crust down to the plain rock core - solid, no dither, so
 # the shelf reads as plain eroded rock and the coral (below) is what carries
-# all the color.
+# all the color. Sand is the crust itself (pick_reef_crust, a fixed
+# per-column decision - see generate_island's top_block/body_block) but is
+# deliberately NOT a GRADIENT entry: pick_gradient's jitter can clamp its
+# result to either end of GRADIENT regardless of depth (see its own
+# docstring), so a gravity block anywhere in this list risks landing on an
+# exposed bottom face - see common.fix_floating_gravity for the other,
+# unrelated way that can happen (a shallow rim column's taper closing
+# before it ever leaves the crust).
 GRADIENT = [
-    "minecraft:sand",
     "minecraft:sandstone",
 ]
 
@@ -145,14 +155,15 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
     flat_top        - if True (default), the top surface is a single flat
                        Y level. Outline is still irregular.
     top_thickness_range - (min, max) number of sand-crust layers, before
-                       the sandstone/calcite/clay gradient starts.
+                       the sandstone gradient starts.
     num_drips / drip_density - unused by this theme; coral colony reach is
                        shaped by _reef_branches' clumped noise instead of
                        common.generate_drips (kept only for CLI/run_cli
                        signature compatibility).
-    decorate_top     - if True, scatters sea pickles and kelp on top.
-    decorate_underside - kelp fringe on the underside, draped from the
-                       true rim. On by default. Coral-branch shaping itself
+    decorate_top     - if True, scatters solid coral-block nubs on top
+                       (in this island's own coral_colors).
+    decorate_underside - eroded sandstone fringe on the underside, draped
+                       from the true rim. On by default. Coral-branch shaping itself
                        always runs (it's the island's basic silhouette).
     """
     size, half, radius = common.grid_dims(diameter)
@@ -183,29 +194,40 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
     _reef_branches(blocks, col_bottom, columns, size, half, seed, rng, max_depth, coral_colors)
 
     if decorate_underside:
-        # kelp fringe draped from the rim (replaces the other themes'
-        # vines/icicles/roots). No common.generate_drips here - the reef
-        # branch colonies above are the underside's whole shape; layering an
-        # evenly-spaced drip skirt on top buried them under a forest of thin
-        # single-column spikes and made the reef read as generic dripstone.
+        # eroded sandstone fringe draped from the rim (replaces the other
+        # themes' vines/icicles/roots - a plain solid block, not kelp:
+        # kelp only exists attached to/inside water, which nothing in this
+        # dry floating-island build ever has). No common.generate_drips
+        # here - the reef branch colonies above are the underside's whole
+        # shape; layering an evenly-spaced drip skirt on top buried them
+        # under a forest of thin single-column spikes and made the reef
+        # read as generic dripstone.
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:kelp",
+            rim_block_fn=lambda rng: "minecraft:sandstone",
             r_frac_threshold=0.55, chance=0.12, length_range=(2, 4),
         )
 
     if decorate_top:
-        # sparse sea pickle clusters and kelp stalks on the top surface
+        # sparse coral nubs on the top surface - solid single-color accents
+        # in this island's own coral_colors, not sea pickles/kelp (both
+        # only exist in or on water, which this dry build never has)
         for (x, z, topY, depth, r, localR) in columns:
             if r / localR < 0.9 and rng.random() < 0.12:
-                blocks.setdefault((x, topY + 1, z), "minecraft:sea_pickle")
+                blocks.setdefault((x, topY + 1, z), rng.choice(coral_colors))
 
-        kelp_spots = [c for c in columns if c[4] / c[5] < 0.55]
-        rng.shuffle(kelp_spots)
-        for (x, z, topY, depth, r, localR) in kelp_spots[: rng.randint(0, 4)]:
-            kelp_h = rng.randint(2, 5)
-            for dy in range(kelp_h):
-                blocks[(x, topY + 1 + dy, z)] = "minecraft:kelp"
+        nub_spots = [c for c in columns if c[4] / c[5] < 0.55]
+        rng.shuffle(nub_spots)
+        for (x, z, topY, depth, r, localR) in nub_spots[: rng.randint(0, 4)]:
+            nub_h = rng.randint(2, 5)
+            color = rng.choice(coral_colors)
+            for dy in range(nub_h):
+                blocks[(x, topY + 1 + dy, z)] = color
+
+    # a rim column can taper closed within its own sand-crust thickness,
+    # leaving sand (gravity-affected) exposed at the very bottom - see
+    # common.fix_floating_gravity.
+    common.fix_floating_gravity(blocks, columns, col_bottom, lambda x, z: "minecraft:sandstone")
 
     # apply world offset
     ox, oy, oz = offset
@@ -228,8 +250,6 @@ BLOCK_COLORS = {
     "minecraft:tube_coral_block": "#2e6fd6",
     "minecraft:brain_coral_block": "#d15fa0",
     "minecraft:fire_coral_block": "#d1372e",
-    "minecraft:kelp": "#3f7a3f",
-    "minecraft:sea_pickle": "#a8c93a",
 }
 
 
@@ -248,7 +268,7 @@ def main():
         scene_title_fn=lambda seed: f"coral reef multi-island demo scene (seed={seed})",
         num_drips_help="unused by this theme - coral colony reach is shaped by clumped noise "
                         "instead, kept only for CLI compatibility",
-        decorate_top_help="scatter sea pickles and kelp on top (off by default)",
+        decorate_top_help="scatter solid coral-block nubs on top (off by default)",
     )
 
 

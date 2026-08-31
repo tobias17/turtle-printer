@@ -2,14 +2,15 @@
 Honeycomb Hive Floating Island Generator for Minecraft
 =========================================================
 
-A giant hardened-honeycomb island variant: golden honeycomb crust over a
-waxy oak-frame core, dotted with wild meadow flowers and beehives on top.
-Structurally the underside is a perfectly regular hexagon grid (see
+A giant hardened-honeycomb island variant: a spruce-plank crust over a
+waxy honey-block core, dotted with wild meadow flowers and beehives on
+top. Structurally the underside is a perfectly regular hexagon grid (see
 `_honeycomb_cells`) of hollow tubes extending straight down from the
-platform - open shafts with uniform, single-material oak-frame walls, not
-filled comb blocks - with NO per-cell noise or randomness anywhere in the
-pattern itself: every wall is exactly one voxel thick (an exact hex-edge
-test, not a rounded approximation) and one uniform color top to bottom.
+platform - open shafts with uniform, single-material honey-block walls,
+not filled comb blocks - with NO per-cell noise or randomness anywhere in
+the pattern itself: every wall is exactly one voxel thick (an exact
+hex-edge test, not a rounded approximation) and one uniform color top to
+bottom.
 The only thing that varies from cell to cell is how far down each tube
 reaches, and that's set by a smooth, deterministic function of the cell's
 own distance from the island's center (deepest at the center, shortest at
@@ -33,14 +34,14 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Honeycomb crust for the platform itself. The tube walls below it are a
+# Spruce-plank crust for the platform itself. The tube walls below it are a
 # single uniform frame material (see _honeycomb_cells) rather than a
 # depth-based gradient - there's deliberately no third/deeper band here,
 # since every below-crust column is either that one wall material or empty
 # air, never a smooth color transition.
 GRADIENT = [
-    "minecraft:honeycomb_block",
-    "minecraft:oak_planks",
+    "minecraft:spruce_planks",
+    "biomesoplenty:honey_block",
 ]
 
 HEX_SIZE = 5.0  # world-space radius of one honeycomb cell, in blocks
@@ -53,7 +54,7 @@ TAPER_POWER = 1.0  # exponent on (1 - radius_fraction) used to set each
 
 def pick_gradient(rng, t, jitter=0.0):
     """Picks a block for depth-fraction t in [0, 1] (0 = right at the
-    honeycomb crust, 1 = deepest rock). `jitter` (driven only by smooth
+    spruce-plank crust, 1 = deepest rock). `jitter` (driven only by smooth
     per-column noise) nudges the whole column toward a neighboring shade so
     the band edge is wavy instead of a razor-straight ring, without
     per-voxel dithering."""
@@ -64,8 +65,8 @@ def pick_gradient(rng, t, jitter=0.0):
 
 
 def pick_comb_crust(rng):
-    """Top-crust block: solid honeycomb, no fleck - the crust is a flat platform."""
-    return "minecraft:honeycomb_block"
+    """Top-crust block: solid spruce plank, no fleck - the crust is a flat platform."""
+    return "minecraft:spruce_planks"
 
 
 def _hex_cell(x, z, size):
@@ -171,7 +172,7 @@ def _honeycomb_cells(blocks, col_bottom, columns, max_depth, crust_depth):
             for y in range(bottomY, new_bottomY):
                 blocks.pop((x, y, z), None)
             for y in range(new_bottomY, crust_bottom):
-                blocks[(x, y, z)] = "minecraft:oak_planks"
+                blocks[(x, y, z)] = "biomesoplenty:honey_block"
         else:
             # hollow interior, OR a wall whose cell has zero tube length
             # this close to the rim - either way, clear the whole shaft
@@ -194,7 +195,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     diameter        - island top diameter in blocks (radius = diameter / 2)
     flat_top        - if True (default), the top surface is a single flat
                        Y level. Outline is still irregular.
-    top_thickness_range - (min, max) number of honeycomb-crust layers,
+    top_thickness_range - (min, max) number of spruce-plank crust layers,
                        before the oak-frame/rock gradient starts.
     num_drips / drip_density - unused by this theme (kept only so every
                        theme's generate_island shares the same CLI/run_cli
@@ -268,8 +269,8 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 
 
 def generate_scene(seed=0):
-    """One big honeycomb-hive island plus satellites and floating wax debris."""
-    return common.basic_scene(seed, generate_island, debris_block="minecraft:honeycomb_block")
+    """One big honeycomb-hive island plus satellites and floating plank debris."""
+    return common.basic_scene(seed, generate_island, debris_block="minecraft:spruce_planks")
 
 
 # ---------------------------------------------------------------------------
@@ -277,8 +278,8 @@ def generate_scene(seed=0):
 # ---------------------------------------------------------------------------
 
 BLOCK_COLORS = {
-    "minecraft:honeycomb_block": "#e8ab3f",
-    "minecraft:oak_planks": "#b8853f",
+    "minecraft:spruce_planks": "#7a5c38",
+    "biomesoplenty:honey_block": "#e8ab3f",
     "minecraft:beehive": "#d9a441",
     "minecraft:dandelion": "#e8c93a",
     "minecraft:cornflower": "#4166f5",

@@ -2,8 +2,8 @@
 Ossuary Ribcage Floating Island Generator for Minecraft
 ===========================================================
 
-A bleached bone-wasteland island variant: pale bone crust over ashen soul
-soil, grading to plain deepslate at the very core. Structurally it inverts
+A bleached bone-wasteland island variant: pale bone crust over charred
+coal, grading to plain deepslate at the very core. Structurally it inverts
 every other theme's idea: instead of a solid mass with one deep feature
 exempted (crystal's spikes, prismarine's towers), the ENTIRE underside is
 first hollowed out to a thin ceiling right under the crust, and only a
@@ -30,14 +30,14 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Bone crust down through ashen soul soil to plain deepslate at the core -
+# Bone crust down through charred coal to plain deepslate at the core -
 # kept to 3 solid bands (no fleck/dither). The soul lantern is reserved
 # exclusively for the ribcage's convergence point (see _rib_cage), never
 # part of the bulk gradient, so it reads as one deliberate glowing feature
 # rather than more bulk texture.
 GRADIENT = [
     "minecraft:bone_block",
-    "minecraft:soul_soil",
+    "minecraft:coal_block",
     "minecraft:deepslate",
 ]
 
@@ -200,7 +200,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
     flat_top        - if True (default), the top surface is a single flat
                        Y level. Outline is still irregular.
     top_thickness_range - (min, max) number of bone-crust layers, before
-                       the soul-soil/deepslate gradient starts.
+                       the coal/deepslate gradient starts.
     num_drips / drip_density - see grass.py; here each "drip" is a small
                        hanging bone spur off the thin ceiling, distinct
                        from the main ribs.
@@ -236,15 +236,15 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):
-            return "minecraft:bone_block" if is_tip else "minecraft:soul_soil"
+            return "minecraft:bone_block" if is_tip else "minecraft:coal_block"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
 
-        # a few bare soul-soil crumbs clinging near the outer rim
+        # a few bare coal crumbs clinging near the outer rim
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:soul_soil",
+            rim_block_fn=lambda rng: "minecraft:coal_block",
             r_frac_threshold=0.55, chance=0.14, length_range=(1, 2),
         )
 
@@ -280,7 +280,7 @@ def generate_scene(seed=0):
 
 BLOCK_COLORS = {
     "minecraft:bone_block": "#e4dcc0",
-    "minecraft:soul_soil": "#3b2f26",
+    "minecraft:coal_block": "#1c1c1c",
     "minecraft:deepslate": "#393a3d",
     "minecraft:soul_lantern": "#5fd6cf",
     "minecraft:wither_rose": "#2e2015",

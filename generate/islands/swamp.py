@@ -2,9 +2,9 @@
 Mangrove Bog Floating Island Generator for Minecraft
 =====================================================
 
-A swamp/bog island variant: mud and moss on top (with the occasional bog
-pool), grading down through muddy mangrove roots and clay into the plain
-rock core every island theme shares underneath. Structurally it's a
+A swamp/bog island variant: mottled swamp stone and moss on top (with the
+occasional bog pool), grading down through gnarled mangrove roots into
+the plain rock core every island theme shares underneath. Structurally it's a
 "platter", not a dome or spike: the CENTER is shallow (a floating marsh
 raft), while a ring near the rim keeps its full natural depth and then
 grows thick, curving mangrove-root trunks that drift outward and downward
@@ -28,12 +28,12 @@ import common
 # Island generation
 # ---------------------------------------------------------------------------
 
-# Mud crust down to plain rock at the core - kept to 2 solid bands (no
+# Swamp stone crust down to plain rock at the core - kept to 2 solid bands (no
 # fleck/dither); the mangrove-root colors are reserved exclusively for the
 # rim skirt's root trunks (see _grow_root_trunks) so roots read as a
 # distinct material growing off the island, not more bulk texture.
 GRADIENT = [
-    "minecraft:mud",
+    "botania:biomestonea_swamp",
     "minecraft:stone",
 ]
 
@@ -41,8 +41,8 @@ RIM_BAND = (0.5, 0.95)  # r/localR range that keeps full depth + grows roots
 
 
 def pick_gradient(rng, t, jitter=0.0):
-    """Picks a block for depth-fraction t in [0, 1] (0 = right at the mud
-    crust, 1 = deepest rock). `jitter` (driven only by smooth per-column
+    """Picks a block for depth-fraction t in [0, 1] (0 = right at the
+    swamp-stone crust, 1 = deepest rock). `jitter` (driven only by smooth per-column
     noise) nudges the whole column toward a neighboring shade so the band
     edge is wavy instead of a razor-straight ring, without per-voxel
     dithering."""
@@ -53,8 +53,8 @@ def pick_gradient(rng, t, jitter=0.0):
 
 
 def pick_bog_crust(rng):
-    """Top-crust block: solid mud, no fleck - the crust is a flat platform."""
-    return "minecraft:mud"
+    """Top-crust block: solid swamp stone, no fleck - the crust is a flat platform."""
+    return "botania:biomestonea_swamp"
 
 
 def _rim_skirt(blocks, col_bottom, columns, max_depth):
@@ -164,12 +164,12 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
     diameter        - island top diameter in blocks (radius = diameter / 2)
     flat_top        - if True (default), the top surface is a single flat
                        Y level. Outline is still irregular.
-    top_thickness_range - (min, max) number of mud-crust layers, before
+    top_thickness_range - (min, max) number of swamp-stone crust layers, before
                        the root/clay gradient starts.
     num_drips / drip_density - see grass.py; here each "drip" is a hanging
                        clump of muck, distinct from the dedicated root
                        trunks grown from the rim skirt.
-    decorate_top     - if True, scatters lily pads and mangrove trees on top.
+    decorate_top     - if True, scatters moss patches and mangrove trees on top.
     decorate_underside - rim-skirt shaping, root trunks, hanging muck and
                        moss fringe on the underside. On by default.
     """
@@ -203,24 +203,29 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
         _grow_root_trunks(blocks, columns, col_bottom, rng, max_depth)
 
         def drip_block(rng, t, is_tip):
-            return "minecraft:mangrove_roots" if is_tip else "minecraft:mud"
+            return "minecraft:mangrove_roots" if is_tip else "botania:biomestonea_swamp"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block)
 
-        # a bit of hanging moss near the outer rim
+        # a bit of hanging root debris near the outer rim - moss_carpet
+        # can't be used here even as a solid-looking accent: carpet only
+        # stays placed with a solid block directly BELOW it, not above,
+        # so a "hanging" chain of it (this decoration stacks new blocks
+        # downward into open air) would just pop off - see
+        # common.decorate_rim_underside's own docstring
         common.decorate_rim_underside(
             rng, blocks, columns, col_bottom,
-            rim_block_fn=lambda rng: "minecraft:moss_carpet",
+            rim_block_fn=lambda rng: "minecraft:mangrove_roots",
             r_frac_threshold=0.55, chance=0.2, length_range=(2, 5),
         )
 
     if decorate_top:
-        # sparse lily pads, mangrove propagules and seagrass on the top
+        # sparse moss patches on the top surface - not lily pads, which
+        # only exist floating on water and this dry build never has any
         for (x, z, topY, depth, r, localR) in columns:
             if r / localR < 0.9 and rng.random() < 0.12:
-                block = "minecraft:lily_pad"
-                blocks.setdefault((x, topY + 1, z), block)
+                blocks.setdefault((x, topY + 1, z), "minecraft:moss_carpet")
 
         # a couple of small mangrove trees
         tree_spots = [c for c in columns if c[4] / c[5] < 0.55]
@@ -243,7 +248,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(3, 5), max_depth=1
 
 def generate_scene(seed=0):
     """One big mangrove-bog island plus satellites and floating muck debris."""
-    return common.basic_scene(seed, generate_island, debris_block="minecraft:mud")
+    return common.basic_scene(seed, generate_island, debris_block="botania:biomestonea_swamp")
 
 
 # ---------------------------------------------------------------------------
@@ -251,11 +256,10 @@ def generate_scene(seed=0):
 # ---------------------------------------------------------------------------
 
 BLOCK_COLORS = {
-    "minecraft:mud": "#4d3d2d",
+    "botania:biomestonea_swamp": "#5a6b4d",
     "minecraft:mangrove_roots": "#5a3d28",
     "minecraft:stone": "#8a8a8a",
     "minecraft:moss_carpet": "#4f7a2a",
-    "minecraft:lily_pad": "#3f7a2f",
     "minecraft:mangrove_log": "#5c2a2a",
     "minecraft:mangrove_leaves": "#4a6b2a",
 }
@@ -276,7 +280,7 @@ def main():
         scene_title_fn=lambda seed: f"mangrove bog multi-island demo scene (seed={seed})",
         num_drips_help=("number of hanging muck clumps (default: auto-scales with the "
                          "island's rim geometry - see --drip-density)"),
-        decorate_top_help="scatter lily pads and mangrove trees on top (off by default)",
+        decorate_top_help="scatter moss patches and mangrove trees on top (off by default)",
     )
 
 

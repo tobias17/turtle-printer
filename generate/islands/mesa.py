@@ -237,6 +237,11 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
             r_frac_threshold=0.55, chance=0.12, length_range=(1, 3),
         )
 
+    # a rim column can taper closed within its own red-sand-crust
+    # thickness, leaving red sand (gravity-affected) exposed at the very
+    # bottom - see common.fix_floating_gravity.
+    common.fix_floating_gravity(blocks, columns, col_bottom, lambda x, z: "minecraft:orange_terracotta")
+
     # apply world offset
     ox, oy, oz = offset
     return {(x + ox, y + oy, z + oz): b for (x, y, z), b in blocks.items()}

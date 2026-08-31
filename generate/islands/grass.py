@@ -3,8 +3,8 @@ Floating Island Generator for Minecraft (grass / stone / nature theme)
 =========================================================================
 
 Procedurally generates floating rock islands (irregular grassy top,
-tapering rocky underside, hanging "root" stalactites, moss/vine
-decoration) in the style of concept-art floating islands.
+tapering rocky underside, hanging "root" stalactites, leafy decoration)
+in the style of concept-art floating islands.
 
 This is the original nature-themed island. It now lives alongside other
 biome variants in generate/islands/ (see volcano.py, snow.py, desert.py,
@@ -66,7 +66,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
                        size instead of clustering near one shared maximum.
     decorate_top     - if True, scatters small trees on top. Off by
                        default so the surface stays clear to build on.
-    decorate_underside - hanging root drips + vines + moss on the rock
+    decorate_underside - hanging root drips + leafy accents on the rock
                        underside. On by default for the floating-island look;
                        doesn't affect the top surface at all.
     """
@@ -77,9 +77,9 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
         return "minecraft:dirt" if y_offset < thickness else "minecraft:stone"
 
     def bottom_face(rng, blocks, x, z, bottomY, r, localR):
-        # occasional moss cap on the very bottom face near the edge
+        # occasional leaf cap on the very bottom face near the edge
         if r / localR > 0.65 and rng.random() < 0.35:
-            blocks[(x, bottomY, z)] = "minecraft:mossy_cobblestone"
+            blocks[(x, bottomY, z)] = "minecraft:oak_leaves"
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top,
@@ -93,18 +93,21 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 
     if decorate_underside:
         def drip_block(rng, t, is_tip):
-            return "minecraft:mossy_cobblestone" if is_tip else "minecraft:stone"
+            return "minecraft:oak_leaves" if is_tip else "minecraft:stone"
 
         def after_drip(rng, blocks, x, tip_y, z):
             if rng.random() < 0.6:
-                blocks[(x, tip_y, z)] = "minecraft:vine"
+                blocks[(x, tip_y, z)] = "minecraft:oak_leaves"
 
         common.generate_drips(rng, blocks, columns, col_bottom, diameter, max_depth,
                                num_drips, drip_density, drip_block, after_drip_fn=after_drip)
 
-        # vines draped down from the underside near the outer rim
+        # leafy accents draped down from the underside near the outer rim -
+        # a plain solid block, not vine: nothing in this project's turtle-
+        # build pipeline resolves an attachment face the way vine needs
+        # (see common.decorate_rim_underside's own docstring)
         common.decorate_rim_underside(rng, blocks, columns, col_bottom,
-                                       rim_block_fn=lambda rng: "minecraft:vine",
+                                       rim_block_fn=lambda rng: "minecraft:oak_leaves",
                                        r_frac_threshold=0.55, chance=0.18, length_range=(2, 6))
 
     if decorate_top:
@@ -141,8 +144,6 @@ BLOCK_COLORS = {
     "minecraft:grass_block": "#5b8a3a",
     "minecraft:dirt": "#6b4a2b",
     "minecraft:stone": "#8a8a8a",
-    "minecraft:mossy_cobblestone": "#5e6b4a",
-    "minecraft:vine": "#3f6b2a",
     "minecraft:oak_log": "#5a3d1f",
     "minecraft:oak_leaves": "#3f7a2f",
 }

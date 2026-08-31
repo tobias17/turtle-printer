@@ -2,11 +2,11 @@
 Fungal Floating Island Generator for Minecraft
 ===================================================
 
-A mycelium island variant: solid mycelium all the way through, top to
-underside, shaped into a flat mushroom cap with a single thick white stem
-plunging down from the center - just those two blocks, no gradient, no
-gill texture, no hanging drips or rim fringe. Giant mushrooms can grow on
-top instead of trees.
+A mushroom-cap island variant: solid red mushroom block all the way
+through, top to underside, shaped into a flat mushroom cap with a single
+thick white stem plunging down from the center - just those two blocks,
+no gradient, no gill texture, no hanging drips or rim fringe. Giant
+mushrooms can grow on top instead of trees.
 
 Shares its silhouette/taper machinery with the other island themes in
 generate/islands/ (see common.py) - this file only supplies the fungal-
@@ -26,9 +26,9 @@ import common
 STEM_BLOCK = "minecraft:mushroom_stem"
 
 
-def pick_mycelium_crust(rng):
-    """Top-crust block: solid mycelium, no fleck - a flat platform."""
-    return "minecraft:mycelium"
+def pick_cap_crust(rng):
+    """Top-crust block: solid red mushroom block, no fleck - a flat platform."""
+    return "minecraft:red_mushroom_block"
 
 
 def _cap_and_stem(blocks, col_bottom, columns, rng, max_depth):
@@ -76,11 +76,12 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     flat_top        - if True (default), the top surface is a single flat
                        Y level. Outline is still irregular.
     top_thickness_range - unused by this theme; the whole cap is solid
-                       mycelium regardless of depth (kept only for CLI/
-                       run_cli signature compatibility).
+                       red mushroom block regardless of depth (kept only
+                       for CLI/run_cli signature compatibility).
     num_drips / drip_density - unused by this theme; the underside is just
-                       the flat solid-mycelium cap and stem, no drips
-                       (kept only for CLI/run_cli signature compatibility).
+                       the flat solid mushroom-block cap and stem, no
+                       drips (kept only for CLI/run_cli signature
+                       compatibility).
     decorate_top     - if True, scatters small mushrooms and grows a couple
                        of giant mushrooms on top.
     decorate_underside - unused by this theme; the cap has no underside
@@ -90,10 +91,10 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     size, half, radius = common.grid_dims(diameter)
 
     def top_block(rng, x, z, xi, zi):
-        return pick_mycelium_crust(rng)
+        return pick_cap_crust(rng)
 
     def body_block(rng, x, z, xi, zi, y_offset, thickness, total_depth):
-        return pick_mycelium_crust(rng)
+        return pick_cap_crust(rng)
 
     blocks, col_bottom, columns, rng, size, half, radius = common.carve_columns(
         seed, diameter, top_thickness_range, max_depth, flat_top, top_block, body_block,
@@ -104,7 +105,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
     )
     # reshape the smooth cone into a flat cap + central stem (recolored solid
     # white) - see _cap_and_stem above. Everything carved is already solid
-    # mycelium, so this is the only underside shaping this theme does.
+    # red mushroom block, so this is the only underside shaping this theme does.
     _cap_and_stem(blocks, col_bottom, columns, rng, max_depth)
 
     if decorate_top:
@@ -136,7 +137,7 @@ def generate_island(seed=0, diameter=40, top_thickness_range=(4, 6), max_depth=1
 
 def generate_scene(seed=0):
     """One big fungal island plus satellites and floating boggy debris."""
-    return common.basic_scene(seed, generate_island, debris_block="minecraft:mycelium")
+    return common.basic_scene(seed, generate_island, debris_block="minecraft:red_mushroom_block")
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +145,6 @@ def generate_scene(seed=0):
 # ---------------------------------------------------------------------------
 
 BLOCK_COLORS = {
-    "minecraft:mycelium": "#6f5a6e",
     "minecraft:mushroom_stem": "#e8e0d0",
     "minecraft:red_mushroom": "#c03030",
     "minecraft:brown_mushroom": "#8a6a48",
@@ -166,7 +166,7 @@ def main():
         block_colors=BLOCK_COLORS,
         single_title_fn=lambda diameter, seed: f"fungal floating island (d={diameter}, seed={seed})",
         scene_title_fn=lambda seed: f"fungal multi-island demo scene (seed={seed})",
-        num_drips_help="unused by this theme - the underside is just the flat solid-mycelium "
+        num_drips_help="unused by this theme - the underside is just the flat solid mushroom-block "
                         "cap and stem, kept only for CLI compatibility",
         decorate_top_help="scatter mushrooms and grow giant mushrooms on top (off by default)",
     )
