@@ -3,10 +3,11 @@ Tiny Test Scene Composer
 ==========================
 A stripped-down, fast-to-generate cousin of scene.py: a center island
 (spire_base themed, ~20 diameter) topped with a small placeholder tower,
-plus 3 small islands (~20 diameter, SATELLITE_THEMES below - grass, snow,
-mesa) packed tightly around it - same "closest legal spot, spread apart by
-top color" placement rule scene.py uses (see _place_closest below), just
-with much smaller constants so the whole cluster stays tiny.
+plus a handful of small islands (~20 diameter, SATELLITE_THEMES below -
+grass, snow, mesa, crystal) packed tightly around it - same "closest legal
+spot, spread apart by top color" placement rule scene.py uses (see
+_place_closest below), just with much smaller constants so the whole
+cluster stays tiny.
 
 The center tower is deliberately NOT spire.py's Sauron spire: that
 generator has no size knob (its ~150-block-tall tiered profile, floor
@@ -65,14 +66,14 @@ HOST_MODULE = spire_base
 TOP_BLOCK = {
     "grass": "minecraft:grass_block", "volcano": "minecraft:blackstone",
     "snow": "minecraft:snow_block", "desert": "minecraft:sand", "mesa": "minecraft:red_sand",
-    "mushroom": "minecraft:mycelium", "bones": "minecraft:bone_block",
+    "mushroom": "minecraft:red_concrete", "bones": "minecraft:bone_block",
     "crystal": "minecraft:purpur_block", "coral": "minecraft:sand",
-    "ruins": "minecraft:moss_block", "swamp": "minecraft:mud",
-    "prismarine": "minecraft:prismarine_bricks", "hive": "minecraft:honeycomb_block",
+    "ruins": "minecraft:moss_block", "swamp": "botania:biomestonea_swamp",
+    "prismarine": "minecraft:prismarine_bricks", "hive": "minecraft:spruce_planks",
 }
-HOST_TOP_COLOR = spire_base.BLOCK_COLORS["minecraft:deepslate"]
+HOST_TOP_COLOR = spire_base.BLOCK_COLORS[spire_base.BLOCK]
 
-SATELLITE_THEMES = ["grass", "snow", "mesa"]
+SATELLITE_THEMES = ["grass", "snow", "mesa", "crystal"]
 DIAMETER_RANGE = (18, 22)
 GAP = 4  # minimum clear void every pair of islands (host included) must keep between their footprints
 
@@ -245,9 +246,11 @@ def main():
     print(f"structure shape: {structure.shape}")
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    npz_path = structure.save(args.out_dir / f"{args.out}.npz")
-    print(f"Wrote structure to {npz_path}")
 
+    # Render BEFORE hollowing (see AGENTS.md's "preview before hollowing"
+    # note, and generate/tree.py's own generate_tree docstring) - the
+    # outward silhouette is identical either way with this renderer, but
+    # every generator stays consistent about the ordering regardless.
     palette = {
         name: (
             int(color.lstrip("#")[0:2], 16) / 255.0,
@@ -266,6 +269,13 @@ def main():
     for p in view_paths:
         Path(p).unlink(missing_ok=True)
     print(f"Saved preview image to {out_path}")
+
+    removed_n = common.hollow_structure(structure, shell=1)
+    print(f"hollowed out {removed_n} buried interior voxels "
+          f"({len(blocks) - removed_n} remain)")
+
+    npz_path = structure.save(args.out_dir / f"{args.out}.npz")
+    print(f"Wrote structure to {npz_path}")
 
     if args.schem:
         structure.to_schematic(args.out_dir, args.out)

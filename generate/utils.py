@@ -19,9 +19,11 @@ Right now only (1) is wired up end to end in the generator scripts; (2) and
 """
 
 import json
+from collections import deque
 from pathlib import Path
 
 import numpy as np
+from scipy import ndimage
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +128,193 @@ class Structure:
         print(f"Saved {out_path} ({len(xs)} blocks) -- load it in-game with "
               f"WorldEdit: //schem load {name}  then  //paste")
         return out_path
+
+
+# ---------------------------------------------------------------------------
+# Block properties shared across generators
+# ---------------------------------------------------------------------------
+
+# Falls with nothing solid beneath it (and can't be safely turtle-placed
+# bottom-up either) -- see islands/common.py's fix_floating_gravity and
+# hollow_structure below, the two places this matters.
+GRAVITY_BLOCKS = frozenset({"minecraft:sand", "minecraft:red_sand", "minecraft:gravel"})
+
+# Substrings marking a block as transparent/see-through enough that
+# hollow_structure must never remove it, or remove anything touching it --
+# removing a block directly behind a transparent one (or the transparent
+# block itself) can become visible in-game through the gap. Hand-maintained,
+# not a full Minecraft opacity table -- same spirit as
+# world_import/block_compat.py's LEGACY_MAP: add a keyword (or an exact name
+# to the tuple below) if a new theme introduces another see-through block.
+# "ice" is checked as an exact name rather than a substring on purpose --
+# packed_ice/blue_ice both contain "ice" but are fully opaque in-game.
+TRANSPARENT_KEYWORDS = ("glass", "leaves")
+TRANSPARENT_EXACT = frozenset({"minecraft:ice"})
+
+
+def is_transparent(block_name):
+    base = block_name.split("[", 1)[0]  # strip any blockstate suffix, e.g. "[persistent=true]"
+    if base in TRANSPARENT_EXACT:
+        return True
+    return any(kw in base for kw in TRANSPARENT_KEYWORDS)
+
+
+_NEIGHBOR_OFFSETS = ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1))
+
+
+def _bfs_predecessors(mask, sources):
+    """6-connected BFS over the True cells of `mask`, starting from every
+    True cell of `sources` (itself a subset of mask). Returns {voxel:
+    predecessor} for every mask cell reachable from `sources` -- source
+    cells map to None. Used by hollow_structure to find the shortest
+    reconnecting path back to a surviving fragment; `mask` is always one
+    island's worth of voxels (at most a few thousand), so a plain Python
+    BFS is fast enough without needing a vectorized approach."""
+    pred = {}
+    dq = deque()
+    for v in map(tuple, np.argwhere(sources)):
+        pred[v] = None
+        dq.append(v)
+    shape = mask.shape
+    while dq:
+        x, y, z = dq.popleft()
+        for dx, dy, dz in _NEIGHBOR_OFFSETS:
+            nx, ny, nz = x + dx, y + dy, z + dz
+            if (0 <= nx < shape[0] and 0 <= ny < shape[1] and 0 <= nz < shape[2]
+                    and mask[nx, ny, nz] and (nx, ny, nz) not in pred):
+                pred[(nx, ny, nz)] = (x, y, z)
+                dq.append((nx, ny, nz))
+    return pred
+
+
+def _protect_connectivity(solid, removable):
+    """Un-marks just enough of `removable` to guarantee every voxel of
+    `solid` that survives (solid & ~removable) stays in the same connected
+    piece it started in -- a plain local "all 6 neighbors solid" buried
+    check does NOT guarantee this on its own. Concrete failure case this
+    fixes: a single-voxel spur (e.g. a terrace ledge, or a drip/rim-decor
+    attachment) that itself has an air neighbor (so it's correctly never a
+    removal candidate) can still be connected to the rest of the island by
+    exactly one solid neighbor voxel -- and if THAT bridge voxel is itself
+    fully surrounded on all 6 sides (true, from the bridge voxel's own
+    local point of view), the plain rule removes it and stops the real
+    survivor for connecting to anything, leaving it floating alone in
+    mid-air as its own tiny "island" once turtle_export's connected-
+    component segmentation sees it.
+
+    For every original connected component of `solid`, this checks whether
+    removing `removable` splits it into more than one surviving piece; if
+    so, it restores (un-removes) the shortest possible path of candidate
+    voxels back to that component's largest surviving piece, for every
+    smaller piece -- the minimal fix, not a blanket "don't hollow near any
+    spur" rule, so ordinary fully-interior mass still gets removed."""
+    kept = solid & ~removable
+    orig_labels, n_orig = ndimage.label(solid)
+    for label_id in range(1, n_orig + 1):
+        island = orig_labels == label_id
+        island_kept = kept & island
+        k_labels, k_n = ndimage.label(island_kept)
+        if k_n <= 1:
+            continue
+
+        sizes = ndimage.sum(island_kept, k_labels, index=np.arange(1, k_n + 1))
+        main_label = int(np.argmax(sizes)) + 1
+        pred = _bfs_predecessors(island, k_labels == main_label)
+
+        for frag_label in range(1, k_n + 1):
+            if frag_label == main_label:
+                continue
+            frag_voxels = np.argwhere(k_labels == frag_label)
+            v = tuple(frag_voxels[0])
+            while v is not None:
+                removable[v] = False
+                v = pred[v]
+    return removable
+
+
+def hollow_structure(structure, shell=1):
+    """Removes buried interior voxels from `structure` in place (mutates
+    structure.data), leaving a `shell`-voxel-thick solid crust -- the same
+    idea, and the same `shell`-times-erode-the-core-mask-then-remove-it-
+    once algorithm shape, as tree.py's own hollow_out, generalized to the
+    full Atlas/Structure model plus three correctness rules a bare
+    geometric erosion doesn't know about:
+
+      - never remove a transparent block (see TRANSPARENT_KEYWORDS/
+        TRANSPARENT_EXACT above), and never remove a block touching one --
+        a buried block sitting right behind a window could become visible
+        through it. Enforced by eroding `opaque_solid` (solid minus
+        transparent) instead of plain solid, exactly like tree.py erodes
+        `grid != AIR` -- a transparent voxel, or anything touching one,
+        never even enters the core.
+      - never remove a block directly beneath a gravity-affected block
+        (see GRAVITY_BLOCKS) that survives hollowing -- that strands the
+        sand/gravel/red_sand block above on nothing, which falls (and, if
+        that exposes another such block below it, keeps falling) the
+        moment the chunk loads in-game.
+      - never remove a block whose removal would disconnect some other,
+        still-solid block from the rest of the island (see
+        _protect_connectivity above) -- otherwise a thin spur (a terrace
+        ledge, a drip's attachment point, ...) can end up floating alone
+        in mid-air, disconnected from everything, once its one and only
+        connecting voxel gets hollowed out from under it.
+
+    The last two checks apply once, to the final `shell`-deep core (not
+    once per erosion step) -- same as tree.py, which only ever removes
+    `core` after every erosion iteration has run.
+
+    The gravity check is resolved one Y layer at a time, top to bottom, not
+    as a single unordered pass: whether a gravity block "survives" can
+    itself only be known after resolving the layer above it (a stack of
+    several gravity blocks under one exposed surface block must all
+    survive together, arbitrarily deep) -- see the loop below for the
+    concrete case this matters for.
+
+    Call this AFTER rendering the preview PNG, not before (see
+    generate/tree.py's generate_tree docstring / AGENTS.md's "preview
+    before hollowing" note) -- the outward silhouette is identical either
+    way with the current renderer, but this keeps every generator
+    consistent about it regardless.
+
+    Returns the number of voxels removed.
+    """
+    data = structure.data
+    names = structure.atlas.names
+    transparent_by_id = np.array([is_transparent(n) for n in names])
+    gravity_by_id = np.array([n in GRAVITY_BLOCKS for n in names])
+
+    solid = data != 0
+    opaque_solid = solid & ~transparent_by_id[data]
+    gravity = gravity_by_id[data]
+
+    core = opaque_solid.copy()
+    for _ in range(shell):
+        pad = np.pad(core, 1, mode="constant", constant_values=False)
+        core = (
+            pad[2:, 1:-1, 1:-1] & pad[:-2, 1:-1, 1:-1] &
+            pad[1:-1, 2:, 1:-1] & pad[1:-1, :-2, 1:-1] &
+            pad[1:-1, 1:-1, 2:] & pad[1:-1, 1:-1, :-2] & core
+        )
+    candidates = core
+
+    y_size = data.shape[1]
+    removable = np.zeros_like(candidates)
+    for y in range(y_size - 1, -1, -1):
+        layer = candidates[:, y, :]
+        if y + 1 < y_size:
+            # A gravity block one layer up "survives" either because it was
+            # never a removal candidate (e.g. it's the exposed surface
+            # block itself), or because IT was vetoed by this same rule one
+            # level up -- already resolved, since this loop runs top down.
+            survives_above = gravity[:, y + 1, :] & ~removable[:, y + 1, :]
+        else:
+            survives_above = np.zeros_like(layer)
+        removable[:, y, :] = layer & ~survives_above
+
+    removable = _protect_connectivity(solid, removable)
+
+    data[removable] = 0
+    return int(removable.sum())
 
 
 # ---------------------------------------------------------------------------

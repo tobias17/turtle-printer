@@ -276,8 +276,17 @@ def clear_stale_extended_id_tags(save_path, dimension_folder, clear_min, clear_s
             if not region.has_chunk(local_cx, local_cz):
                 continue
             tag = region.get_data(local_cx, local_cz)
+            level = tag.compound.get("Level")
+            sections = level.get("Sections") if level is not None else None
+            if sections is None:
+                # a chunk amulet just created from nothing (never generated/
+                # visited before this import - the common case for a brand
+                # new world) has no Level/Sections yet to carry a stale
+                # Palette/Add/Add2 tag in the first place, so there's
+                # nothing here to clean.
+                continue
             changed = False
-            for sec in tag.compound.get("Level").get("Sections"):
+            for sec in sections:
                 for key in ("Palette", "Add", "Add2"):
                     if sec.get(key) is not None:
                         del sec[key]

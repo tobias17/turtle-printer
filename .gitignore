@@ -2,8 +2,8 @@
 *.pyc
 
 .venv/
-**/output/*
-tmp/*
+**/output/
+tmp/
 
 # local machine's world-save location + import target - see
 # world_import/config.example.json for the template

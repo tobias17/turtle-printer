@@ -28,13 +28,16 @@ import numpy as np
 # module is run directly or imported by a sibling theme script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from utils import Atlas, Structure, render_screenshot, value_noise_2d  # noqa: E402
+from utils import (  # noqa: E402
+    Atlas, Structure, render_screenshot, value_noise_2d,
+    GRAVITY_BLOCKS, hollow_structure, is_transparent,
+)
 
 __all__ = [
     "Atlas", "Structure", "render_screenshot", "value_noise_2d",
     "weighted_choice", "grid_dims", "drip_radius_profile", "carve_columns",
     "generate_drips", "decorate_rim_underside", "GRAVITY_BLOCKS",
-    "fix_floating_gravity", "basic_scene",
+    "fix_floating_gravity", "basic_scene", "hollow_structure", "is_transparent",
     "blocks_to_structure", "preview", "build_arg_parser", "run_cli",
 ]
 
@@ -327,10 +330,9 @@ def decorate_rim_underside(rng, blocks, columns, col_bottom, rim_block_fn,
 # Printer-buildability: no column may expose a gravity-affected block
 # (sand/red_sand/gravel - falls with nothing solid beneath it, and can't be
 # safely turtle-placed bottom-up either) at its own true bottom.
+# GRAVITY_BLOCKS itself now lives in utils.py (re-exported above) since
+# hollow_structure needs it too, not just this theme-side check.
 # ---------------------------------------------------------------------------
-
-GRAVITY_BLOCKS = frozenset({"minecraft:sand", "minecraft:red_sand", "minecraft:gravel"})
-
 
 def fix_floating_gravity(blocks, columns, col_bottom, fallback_block_fn):
     """Recolors just the bottom-most voxel of any column whose crust
